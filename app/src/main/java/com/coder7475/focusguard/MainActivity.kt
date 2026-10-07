@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.coder7475.focusguard.ui.theme.FocusGuardTheme
 
 class MainActivity : ComponentActivity() {
@@ -22,11 +23,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FocusGuardTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                Scaffold(modifier = Modifier.fillMaxSize()) { paddingValues ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues),
+                        color = Color.White
+                    ) {
                 }
             }
         }
@@ -34,14 +37,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Surface(color = Color.Cyan) {
-        Text(
-            text = "Hi, my name is $name!",
-            modifier = modifier.padding(24.dp)
-        )
-    }
+fun GreetingText(message: String, modifier: Modifier = Modifier) {
+    Text(
+        text = message,
+        modifier = modifier,
+        fontSize = 100.sp,
+    )
 }
+
 
 @Preview(
     name = "My Preview",
@@ -49,8 +52,9 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
     showSystemUi = true
 )
 @Composable
-fun GreetingPreview() {
+fun FocusGuardCardPreview() {
     FocusGuardTheme {
-        Greeting("Fahad")
+        GreetingText(message = "Happy Birthday")
+    }
     }
 }
