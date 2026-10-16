@@ -68,6 +68,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @Composable
+    fun GreetingImage(message: String, from: String, modifier: Modifier = Modifier) {
+
+    }
 
     @Preview(
         name = "My Preview", showBackground = true, showSystemUi = true
