@@ -51,6 +51,7 @@ captures/
 *.jks
 *.keystore
 signing.properties
+keystore.properties
 
 # fastlane
 fastlane/report.xml

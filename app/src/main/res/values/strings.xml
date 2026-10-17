@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">focusGuard</string>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_description">FocusGuard uses Accessibility Service to monitor foreground window transitions, enforcing focus locks over blocked apps while strictly allowing system phone calls and emergency communications.</string>
 </resources>

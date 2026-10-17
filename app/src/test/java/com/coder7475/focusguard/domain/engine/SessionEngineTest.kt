@@ -106,4 +106,26 @@ class SessionEngineTest {
         val remaining = engine.calculateRemainingMs(expiredSession, now)
         assertEquals(0L, remaining)
     }
+
+    @Test
+    fun `reconcileState marks expired session as completed`() = runBlocking {
+        val now = 100_000L
+        val session = engine.startQuickSession(15 * 60 * 1000L, now).getOrThrow()
+
+        val result = engine.reconcileState(now + 20 * 60 * 1000L)
+        assertTrue(result is ReconciliationResult.CompletedExpired)
+        assertEquals(SessionStatus.COMPLETED, (result as ReconciliationResult.CompletedExpired).session.status)
+    }
+
+    @Test
+    fun `reconcileState preserves unexpired active session`() = runBlocking {
+        val now = 100_000L
+        val duration = 15 * 60 * 1000L
+        engine.startQuickSession(duration, now).getOrThrow()
+
+        val checkTime = now + 5 * 60 * 1000L
+        val result = engine.reconcileState(checkTime)
+        assertTrue(result is ReconciliationResult.StillActive)
+        assertEquals(10 * 60 * 1000L, (result as ReconciliationResult.StillActive).remainingMs)
+    }
 }

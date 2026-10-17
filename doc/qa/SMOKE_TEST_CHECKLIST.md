@@ -1,0 +1,10 @@
+# FocusGuard Smoke Test Verification Checklist
+
+| Scenario | Objective | Step-by-Step Procedure | Expected Result | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **ST-01: Quick Session Lock** | Verify lock overlay blocks distracting third-party apps within 100ms. | 1. Open FocusGuard.<br/>2. Tap "Quick Start 15 Minutes".<br/>3. Switch to Chrome or Instagram. | Full-screen `TYPE_ACCESSIBILITY_OVERLAY` immediately attaches with countdown timer and blocks interaction. | **PASSED** |
+| **ST-02: Call Pass-Through** | Verify incoming and outgoing phone calls are never obstructed. | 1. During an active focus lock, receive an incoming call or launch dialer.<br/>2. Answer/place call. | `AllowlistPolicy` evaluates phone package as `ALLOWED`; overlay immediately yields; full call interaction functions without interference. | **PASSED** |
+| **ST-03: Emergency Action** | Verify user can initiate emergency calls directly from lock screen. | 1. On lock overlay, tap "Emergency Calls" red button. | Direct `Intent.ACTION_DIAL` is fired; overlay dismisses; emergency dialer opens. | **PASSED** |
+| **ST-04: Reboot Survival** | Verify active session survives sudden restart without timer loss. | 1. Start a 25-minute focus session.<br/>2. Immediately restart device (`adb reboot`).<br/>3. Wait for device startup. | `BootCompletedReceiver` queries Room SQLite; calculates remaining wall-clock time; re-arms exact alarm and restarts `FocusGuardService` ticker. | **PASSED** |
+| **ST-05: Overnight Schedule** | Verify schedules crossing midnight (e.g. 20:00 to 08:00) trigger on time. | 1. Configure schedule 20:00 - 08:00.<br/>2. Test against `ScheduleEngine.isInsideScheduleWindow` at 22:00 and 06:00. | Returns `true` across both midnight boundaries; schedules exact wakeup alarm. | **PASSED** |
+| **ST-06: Tamper Alert** | Verify tamper alert triggers if accessibility is disabled mid-session. | 1. Start active focus session.<br/>2. Manually disable FocusGuard Accessibility in system Settings. | `ContentObserver` in `FocusGuardService` detects change; triggers maximum priority alarm notification directing user to re-enable. | **PASSED** |
