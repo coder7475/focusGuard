@@ -47,6 +47,13 @@ class BootCompletedReceiver : BroadcastReceiver() {
                         Log.d(TAG, "No active focus session requiring restoration after boot")
                     }
                 }
+
+                // Re-arm enabled recurring schedules
+                val scheduleRepo = com.coder7475.focusguard.data.repository.RoomScheduleRepository(db.scheduleDao())
+                val enabledSchedules = scheduleRepo.getEnabledSchedules()
+                for (schedule in enabledSchedules) {
+                    alarmCoordinator.scheduleRecurringRoutine(schedule)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error during boot reconciliation", e)
             } finally {

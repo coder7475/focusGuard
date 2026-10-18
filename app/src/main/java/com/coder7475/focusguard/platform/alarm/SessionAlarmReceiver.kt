@@ -52,6 +52,8 @@ class SessionAlarmReceiver : BroadcastReceiver() {
                                         val alarmCoordinator = AlarmCoordinator(context)
                                         alarmCoordinator.scheduleSessionCompletion(session.endsAtEpochMs, session.id)
                                         FocusGuardService.start(context, session.endsAtEpochMs)
+                                        // Arm next recurring cycle
+                                        alarmCoordinator.scheduleRecurringRoutine(schedule)
                                     }
                                 }
                             }

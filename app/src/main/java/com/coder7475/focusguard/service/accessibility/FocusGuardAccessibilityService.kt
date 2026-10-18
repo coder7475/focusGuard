@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import com.coder7475.focusguard.MainActivity
 import com.coder7475.focusguard.data.local.FocusGuardDatabase
 import com.coder7475.focusguard.data.repository.RoomSessionRepository
 import com.coder7475.focusguard.domain.model.AccessDecision
@@ -36,6 +37,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     var currentActiveSession: FocusSession? = null
         internal set
 
+    private var lastTargetPackage: String? = null
     var onPackageInspected: ((packageName: String?, decision: AccessDecision) -> Unit)? = null
 
     override fun onCreate() {
@@ -76,28 +78,51 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        ) {
-            val targetPackage = event.packageName?.toString()
-            val decision = allowlistPolicy.evaluateAccess(targetPackage)
-            Log.d(TAG, "Window transition: package=$targetPackage, decision=$decision")
-            onPackageInspected?.invoke(targetPackage, decision)
+        // 1. Only process explicit window state transitions; ignore window hierarchy jitter
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            return
+        }
 
-            val session = currentActiveSession
-            val isSessionActive = session != null &&
-                session.status == SessionStatus.ACTIVE &&
-                System.currentTimeMillis() < session.endsAtEpochMs
+        val targetPackage = event.packageName?.toString()
+        val className = event.className?.toString()
 
-            if (isSessionActive) {
-                if (decision == AccessDecision.BLOCKED) {
-                    overlayManager.showOverlay()
-                } else {
-                    overlayManager.hideOverlay()
-                }
+        // 2. Ignore events with null or blank package names to prevent false dismissals
+        if (targetPackage.isNullOrBlank()) {
+            return
+        }
+
+        // 3. Prevent self-dismissal when overlay window itself fires window events
+        if (targetPackage == packageName) {
+            val isMainActivity = className == MainActivity::class.java.name
+            if (!isMainActivity) {
+                // Event comes from our overlay ComposeView / window, NOT MainActivity
+                return
+            }
+        }
+
+        // 4. Avoid re-evaluating unchanged package states
+        if (targetPackage == lastTargetPackage && overlayManager.isVisible) {
+            return
+        }
+        lastTargetPackage = targetPackage
+
+        val decision = allowlistPolicy.evaluateAccess(targetPackage)
+        Log.d(TAG, "Window transition: package=$targetPackage, class=$className, decision=$decision")
+        onPackageInspected?.invoke(targetPackage, decision)
+
+        val session = currentActiveSession
+        val isSessionActive = session != null &&
+            session.status == SessionStatus.ACTIVE &&
+            System.currentTimeMillis() < session.endsAtEpochMs
+
+        if (isSessionActive) {
+            if (decision == AccessDecision.BLOCKED) {
+                overlayManager.showOverlay()
             } else {
                 overlayManager.hideOverlay()
             }
+        } else {
+            overlayManager.hideOverlay()
         }
     }
 

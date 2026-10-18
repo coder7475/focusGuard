@@ -16,6 +16,18 @@ The system SHALL register an Accessibility Service to capture foreground window 
 - **WHEN** an accessibility event is processed
 - **THEN** `FocusGuardAccessibilityService` MUST operate with `canRetrieveWindowContent = false` and evaluate only window-level metadata
 
+#### Scenario: Ignore non-window-state and null package events
+- **WHEN** an accessibility event is of type other than `TYPE_WINDOW_STATE_CHANGED` or contains a null or blank package name
+- **THEN** `FocusGuardAccessibilityService` MUST ignore the event without altering overlay visibility state
+
+#### Scenario: Prevent overlay self-dismissal
+- **WHEN** an accessibility event is received with `packageName == com.coder7475.focusguard`
+- **THEN** `FocusGuardAccessibilityService` MUST only consider it allowed if `className` matches `MainActivity`, ignoring overlay ComposeView window events
+
+#### Scenario: Suppress redundant window state evaluations
+- **WHEN** a received package matches the previous target package and the overlay is already displayed
+- **THEN** `FocusGuardAccessibilityService` MUST suppress re-evaluation to prevent oscillation
+
 ### Requirement: Dynamic System Role Resolution
 The system SHALL dynamically resolve default phone dialer and SMS packages at runtime without requiring `QUERY_ALL_PACKAGES` permission.
 

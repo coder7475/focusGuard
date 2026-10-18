@@ -18,6 +18,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.coder7475.focusguard.MainActivity
 import com.coder7475.focusguard.R
+import com.coder7475.focusguard.data.local.FocusGuardDatabase
+import com.coder7475.focusguard.data.repository.RoomSessionRepository
+import com.coder7475.focusguard.domain.engine.SessionEngine
 import com.coder7475.focusguard.platform.permission.PermissionChecker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -147,6 +150,15 @@ class FocusGuardService : Service() {
             while (isActive) {
                 val remainingMs = max(0L, endsAtEpochMs - System.currentTimeMillis())
                 if (remainingMs <= 0L) {
+                    try {
+                        val db = FocusGuardDatabase.getInstance(applicationContext)
+                        val sessionRepo = RoomSessionRepository(db.sessionDao())
+                        val sessionEngine = SessionEngine(sessionRepo)
+                        sessionEngine.completeActiveSession()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to complete active session on ticker expiry", e)
+                    }
+
                     showCompletionNotification(applicationContext)
                     stopSelf()
                     break

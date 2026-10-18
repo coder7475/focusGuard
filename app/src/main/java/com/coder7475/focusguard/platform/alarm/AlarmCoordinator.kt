@@ -63,6 +63,43 @@ open class AlarmCoordinator(private val context: Context) {
         }
     }
 
+    open fun cancelScheduleStart(scheduleId: String) {
+        val intent = Intent(context, SessionAlarmReceiver::class.java).apply {
+            action = ACTION_START_SCHEDULED_SESSION
+            putExtra(EXTRA_SCHEDULE_ID, scheduleId)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            REQUEST_CODE_SCHEDULE_START + scheduleId.hashCode(),
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+            Log.d(TAG, "Cancelled schedule start alarm for schedule: $scheduleId")
+        }
+    }
+
+    open fun scheduleRecurringRoutine(
+        schedule: com.coder7475.focusguard.domain.model.FocusSchedule,
+        now: java.time.ZonedDateTime = java.time.ZonedDateTime.now()
+    ) {
+        if (!schedule.isEnabled) {
+            cancelScheduleStart(schedule.id)
+            return
+        }
+        val scheduleEngine = com.coder7475.focusguard.domain.engine.ScheduleEngine()
+        val nextStart = scheduleEngine.computeNextStart(schedule, now)
+        if (nextStart != null) {
+            val triggerEpochMs = nextStart.toInstant().toEpochMilli()
+            scheduleSessionStart(triggerEpochMs, schedule.id)
+            Log.d(TAG, "Armed next recurrence for routine '${schedule.name}' at $nextStart (epoch $triggerEpochMs)")
+        } else {
+            Log.w(TAG, "No future start found for routine '${schedule.name}'")
+        }
+    }
+
     private fun scheduleExact(triggerEpochMs: Long, pendingIntent: PendingIntent) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

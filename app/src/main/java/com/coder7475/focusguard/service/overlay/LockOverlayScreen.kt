@@ -1,6 +1,7 @@
 package com.coder7475.focusguard.service.overlay
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,11 +25,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.coder7475.focusguard.ui.theme.BorderDark
+import com.coder7475.focusguard.ui.theme.DangerRed
+import com.coder7475.focusguard.ui.theme.DarkGunmetal
+import com.coder7475.focusguard.ui.theme.MatteCharcoal
+import com.coder7475.focusguard.ui.theme.OffWhite
+import com.coder7475.focusguard.ui.theme.SafetyOrange
+import com.coder7475.focusguard.ui.theme.SignalAmber
+import com.coder7475.focusguard.ui.theme.TextMuted
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.max
@@ -64,7 +73,15 @@ fun LockOverlayScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF090D16)),
+            .background(MatteCharcoal)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val pointerEvent = awaitPointerEvent()
+                        pointerEvent.changes.forEach { it.consume() }
+                    }
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -75,37 +92,48 @@ fun LockOverlayScreen(
                 .padding(horizontal = 32.dp)
         ) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                shape = RoundedCornerShape(100.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkGunmetal),
+                shape = RoundedCornerShape(8.dp),
+                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderDark)),
                 modifier = Modifier.padding(bottom = 24.dp)
             ) {
                 Text(
-                    text = "FOCUS LOCK ACTIVE",
-                    color = Color(0xFF38BDF8),
-                    fontSize = 12.sp,
+                    text = "HARDWARE LOCK ACTIVE",
+                    color = SafetyOrange,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
                     letterSpacing = 2.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                 )
             }
 
             Text(
                 text = formattedTime,
-                color = Color.White,
-                fontSize = 56.sp,
+                color = OffWhite,
+                fontSize = 58.sp,
                 fontWeight = FontWeight.Black,
                 fontFamily = FontFamily.Monospace,
-                letterSpacing = 2.sp,
+                letterSpacing = (-1).sp,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "TIME REMAINING",
+                color = TextMuted,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Phone locked to protect your focus.\nCalls and emergency access remain available.",
-                color = Color(0xFF94A3B8),
-                fontSize = 14.sp,
-                lineHeight = 22.sp,
+                text = "Device locked to enforce focus discipline.\nEmergency calls remain accessible.",
+                color = TextMuted,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
                 textAlign = TextAlign.Center
             )
 
@@ -114,18 +142,20 @@ fun LockOverlayScreen(
             Button(
                 onClick = onEmergencyClick,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFDC2626),
-                    contentColor = Color.White
+                    containerColor = DangerRed,
+                    contentColor = OffWhite
                 ),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
             ) {
                 Text(
-                    text = "Emergency Calls",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp
+                    text = "EMERGENCY CALLS",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    letterSpacing = 1.sp
                 )
             }
         }
