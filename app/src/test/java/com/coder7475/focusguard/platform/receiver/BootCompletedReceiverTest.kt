@@ -1,17 +1,12 @@
 package com.coder7475.focusguard.platform.receiver
 
-import android.content.Context
-import android.content.Intent
 import com.coder7475.focusguard.domain.engine.ReconciliationResult
-import com.coder7475.focusguard.domain.engine.SessionEngine
 import com.coder7475.focusguard.domain.model.FocusSession
 import com.coder7475.focusguard.domain.model.SessionStatus
 import com.coder7475.focusguard.domain.model.SessionType
 import com.coder7475.focusguard.platform.alarm.AlarmCoordinator
-import io.mockk.coEvery
 import io.mockk.mockk
 import io.mockk.verify
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,7 +33,7 @@ class BootCompletedReceiverTest {
         assertEquals(SessionStatus.COMPLETED, expired.session.status)
 
         val noSession = ReconciliationResult.NoActiveSession
-        assertTrue(noSession is ReconciliationResult)
+        assertEquals(ReconciliationResult.NoActiveSession, noSession)
     }
 
     @Test

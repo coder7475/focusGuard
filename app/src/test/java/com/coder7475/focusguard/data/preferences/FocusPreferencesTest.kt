@@ -65,4 +65,17 @@ class FocusPreferencesTest {
         val batteryGuide = focusPreferences.isBatteryGuideDismissed.first()
         assertTrue(batteryGuide)
     }
+
+    @Test
+    fun defaultDurationIs25Minutes() = runTest(testDispatcher) {
+        val duration = focusPreferences.selectedDurationMinutes.first()
+        org.junit.Assert.assertEquals(25, duration)
+    }
+
+    @Test
+    fun setSelectedDurationMinutesUpdatesState() = runTest(testDispatcher) {
+        focusPreferences.setSelectedDurationMinutes(90)
+        val duration = focusPreferences.selectedDurationMinutes.first()
+        org.junit.Assert.assertEquals(90, duration)
+    }
 }

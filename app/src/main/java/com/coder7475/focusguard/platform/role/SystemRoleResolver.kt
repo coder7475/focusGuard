@@ -1,6 +1,8 @@
 package com.coder7475.focusguard.platform.role
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.provider.Telephony
 import android.telecom.TelecomManager
 
@@ -21,6 +23,22 @@ open class SystemRoleResolver(private val context: Context) {
     open fun getDefaultSmsPackage(): String? {
         return try {
             Telephony.Sms.getDefaultSmsPackage(context)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    open fun getDefaultLauncherPackage(): String? {
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+            val resolveInfo = context.packageManager.resolveActivity(
+                intent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )
+            val pkg = resolveInfo?.activityInfo?.packageName
+            if (pkg == "android") null else pkg
         } catch (_: Exception) {
             null
         }
@@ -49,6 +67,15 @@ open class SystemRoleResolver(private val context: Context) {
             "com.google.android.apps.messaging",
             "com.android.mms",
             "com.samsung.android.messaging"
+        )
+
+        val OEM_LAUNCHER_PACKAGES = setOf(
+            "com.google.android.apps.nexuslauncher",
+            "com.sec.android.app.launcher",
+            "com.miui.home",
+            "com.huawei.android.launcher",
+            "com.oppo.launcher",
+            "com.bbk.launcher2"
         )
     }
 }

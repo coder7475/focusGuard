@@ -1,502 +1,646 @@
-# Comprehensive Audit Report: Screen Flickering & Overlay Touch Leakage
+# Comprehensive Physical Device Audit: Overlay Failure & "Not Working Over Other Apps"
 
 **Target Application:** FocusGuard (`com.coder7475.focusguard`)  
-**Auditor:** Mobile App Builder Agent  
+**Auditor:** Mobile App Builder Agent (`/agency-mobile-app-builder`)  
 **Date:** October 18, 2026  
 **Artifact File:** `AUDIT_BUG.md`  
-**Severity:** Critical (Core Security & UX Defect)
+**Target Hardware/OS:** Physical Android Devices (Android 12, 13, 14, 15 / API 31–35)  
+**Severity:** Blocker / Critical (Core Feature Non-Operational on Hardware)
 
 ---
 
 ## 1. Executive Summary
 
-When testing FocusGuard on a physical Android device, starting or running a focus session produces two critical anomalies:
-1. **Screen Flickering / Strobing:** The lock overlay appears and disappears rapidly in an oscillation loop (~20 times per second), creating a visible strobe effect.
-2. **Touch Bleed-Through ("Everything is Usable"):** Despite the lock overlay flashing on screen, the user can continue tapping, scrolling, and interacting with blocked applications (or the launcher) beneath the overlay without restriction.
+When installing and running the debug APK of FocusGuard on physical Android hardware, **no lock overlay appears over other apps**, and the core focus lock mechanism does not function as expected. The user reports:
+> *"I check using debug version installed on phone, it doesn't overall work as expected, no overall [overlay] or working over others app, audit why features doesn't work as expected. update AUDIT_BUG.md"*
 
-An in-depth static and dynamic architectural code audit reveals **four intersecting root causes**:
-1. An **Accessibility Event Feedback Loop** where showing the overlay window fires system accessibility events (`TYPE_WINDOWS_CHANGED` with `packageName == null`, or `TYPE_WINDOW_STATE_CHANGED` for FocusGuard's own package), which `AllowlistPolicy` evaluates as `ALLOWED`, immediately triggering `hideOverlay()`, which then re-exposes the blocked app and restarts the cycle.
-2. **Incorrect WindowManager Flags (`FLAG_NOT_TOUCH_MODAL`)**, which explicitly instructs the Android window server to dispatch touch events to the windows behind the overlay.
-3. **Non-Consuming Compose Root Surface**, where the root `Box` composable does not intercept pointer input events, allowing unhandled touch events to leak through.
-4. **Session Expiration Desync in Foreground Service**, where `FocusGuardService` calls `stopSelf()` upon timeout without updating the Room database record to `COMPLETED`, leaving the database and accessibility service out of sync if OEM background restrictions delay the exact alarm.
+While the initial theoretical audit identified screen flickering and touch bleed-through flags (`FLAG_NOT_TOUCH_MODAL`), testing on physical devices reveals that **the overlay fails to render entirely** and **background app blocking does not execute**.
+
+A deep architectural and runtime audit has diagnosed **eight intersecting root causes** preventing the overlay and locking features from functioning on physical Android devices:
+
+1. **Fatal Runtime Crash in `OverlayLifecycleOwner.onCreate()`:** Modern AndroidX (`SavedStateRegistryController`) throws `IllegalStateException: You must call performAttach() before calling performRestore(Bundle)` because `performAttach()` is omitted. The exception is swallowed in `LockOverlayWindowManager.attach()`'s `try-catch`, leaving `overlayView` permanently `null` and aborting window creation.
+2. **Android 13+ "Restricted Settings" Security Block:** On Android 13, 14, and 15, sideloaded/debug APKs have their Accessibility Service disabled by default under Android's Restricted Settings policy. Users cannot toggle it on in Settings unless guided through the App Info overflow menu.
+3. **Flawed WindowManager Root View Visibility Model:** Attaching a `ComposeView` with `View.GONE` to Android's `WindowManagerService` via `windowManager.addView(...)` does not reliably toggle on/off when setting `view.visibility = View.VISIBLE`. WindowManager does not perform dynamic surface relayout on root view visibility mutations.
+4. **Absence of Fallback Overlay (`SYSTEM_ALERT_WINDOW` / `TYPE_APPLICATION_OVERLAY`):** The app relies solely on `TYPE_ACCESSIBILITY_OVERLAY`. If the Accessibility Service is disconnected, delayed, or killed by OEM battery managers, there is no `SYSTEM_ALERT_WINDOW` permission or `TYPE_APPLICATION_OVERLAY` fallback to project a lock screen.
+5. **Missing `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` Manifest Permission:** The onboarding workflow treats battery optimization exemption as mandatory, but the permission is omitted from `AndroidManifest.xml`, causing intent failures or security crashes on OEM devices.
+6. **Aggressive Event Filtering Dropping App Switches:** Filtering strictly for `TYPE_WINDOW_STATE_CHANGED` causes modern gesture navigation (swiping home or between recent apps) to drop window transition signals.
+7. **Home Screen / Default Launcher Deadlock:** Default device home launchers (Pixel Launcher, One UI Home, HyperOS Launcher) are treated as `BLOCKED`, creating state deadlocks when navigating between the home screen and blocked apps.
+8. **Missing Compose Theme Provider in Service Context:** `ComposeView` renders `LockOverlayScreen` directly without wrapping it in `FocusGuardTheme`, causing Material3 tokens, colors, and typography to fail or misrender inside an unthemed Service window.
 
 ---
 
-## 2. Bug Breakdown & Symptoms
+## 2. Symptom & Failure Matrix
 
-| Symptom | Observed Behavior | Underlying Mechanism |
+| Symptom on Physical Device | Real-World Observed Behavior | Root Cause Mechanism |
 | :--- | :--- | :--- |
-| **Rapid Screen Flickering** | The dark "FOCUS LOCK ACTIVE" overlay flashes on and off violently. | `showOverlay()` triggers a window change event $\rightarrow$ evaluated as `ALLOWED` $\rightarrow$ `hideOverlay()` called $\rightarrow$ underlying app fires `BLOCKED` $\rightarrow$ `showOverlay()` called again. |
-| **Underlying App Usable** | Taps on social media, games, or launcher pass right through the overlay. | `FLAG_NOT_TOUCH_MODAL` is set + Compose view does not consume pointer input + overlay is `GONE` 50% of the time during oscillation. |
-| **Post-Focus / Session Inconsistency** | After session concludes, service shuts down but Room DB can remain `ACTIVE`. | `FocusGuardService` stops itself at `remainingMs <= 0` without invoking `SessionEngine.completeActiveSession()`. |
+| **No Overlay Appears** | Starting a session and opening a blocked app (YouTube, Chrome, Social Media) shows the app normally. No overlay appears. | `OverlayLifecycleOwner.onCreate()` crashes on `performRestore()` without `performAttach()` $\rightarrow$ swallowed by `try-catch` $\rightarrow$ `overlayView` is `null`. |
+| **Accessibility Toggle Grayed Out** | In Android Settings $\rightarrow$ Accessibility $\rightarrow$ FocusGuard, the switch is disabled with *"Restricted setting"*. | Android 13+ security feature blocks accessibility for sideloaded/debug APKs unless unlocked via App Info. |
+| **Window Invisible / Non-Responsive** | If initialized, setting `view.visibility = View.VISIBLE` does not display the window surface. | Android `WindowManager` does not treat root views like child layout views; changing root `visibility` fails to trigger surface compositor updates. |
+| **Free Access to Blocked Apps** | User can launch and interact with any app while focus session ticker runs in notification shade. | Accessibility service is either not active or overlay view failed to attach to the window server. |
+| **Onboarding Battery Check Fails** | Tapping "Grant Permission" on battery optimization does nothing or throws a crash. | Missing `<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />` in `AndroidManifest.xml`. |
+| **Home Screen Transition Ignored** | Swiping up to return to the launcher does not trigger window state change events. | Modern gesture navigation fires `TYPE_WINDOWS_CHANGED` or internal gesture callbacks, which were completely stripped from the listener. |
 
 ---
 
 ## 3. Deep-Dive Root Cause Analysis
 
-### Root Cause 1: The Oscillating Feedback Loop in `FocusGuardAccessibilityService`
+### Root Cause 1: `OverlayLifecycleOwner` Missing `performAttach()` Crashing Compose Initialization
 
-In [`FocusGuardAccessibilityService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt#L76-L102):
+In [`OverlayLifecycleOwner.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/overlay/OverlayLifecycleOwner.kt#L17-L35):
 
 ```kotlin
-override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-    if (event == null) return
+class OverlayLifecycleOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
 
-    if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-        event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-    ) {
-        val targetPackage = event.packageName?.toString()
-        val decision = allowlistPolicy.evaluateAccess(targetPackage)
-        ...
-        if (isSessionActive) {
-            if (decision == AccessDecision.BLOCKED) {
-                overlayManager.showOverlay()
-            } else {
-                overlayManager.hideOverlay()
-            }
-        } else {
-            overlayManager.hideOverlay()
-        }
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    private val store = ViewModelStore()
+    private val savedStateRegistryController = SavedStateRegistryController.create(this)
+
+    override val lifecycle: Lifecycle
+        get() = lifecycleRegistry
+
+    override val viewModelStore: ViewModelStore
+        get() = store
+
+    override val savedStateRegistry: SavedStateRegistry
+        get() = savedStateRegistryController.savedStateRegistry
+
+    fun onCreate(savedInstanceState: Bundle? = null) {
+        savedStateRegistryController.performRestore(savedInstanceState) // <-- CRASHES HERE!
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
     }
-}
-```
-
-#### Step-by-Step Feedback Loop:
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant BlockedApp as Third-Party App (e.g., YouTube)
-    participant A11y as FocusGuardAccessibilityService
-    participant Policy as AllowlistPolicy
-    participant WM as LockOverlayWindowManager
-    participant OS as Android WindowManager
-
-    User->>BlockedApp: Opens blocked app
-    OS->>A11y: TYPE_WINDOW_STATE_CHANGED (pkg="com.google.android.youtube")
-    A11y->>Policy: evaluateAccess("com.google.android.youtube")
-    Policy-->>A11y: AccessDecision.BLOCKED
-    A11y->>WM: showOverlay()
-    WM->>OS: overlayView.visibility = View.VISIBLE
-    
-    Note over OS,A11y: The new overlay window causes Android OS to dispatch window events!
-    
-    alt Event A: TYPE_WINDOWS_CHANGED (pkg = null)
-        OS->>A11y: TYPE_WINDOWS_CHANGED (packageName = null)
-        A11y->>Policy: evaluateAccess(null)
-        Note over Policy: Line 12: if (packageName.isNullOrBlank()) return ALLOWED
-        Policy-->>A11y: AccessDecision.ALLOWED
-    else Event B: TYPE_WINDOW_STATE_CHANGED (pkg = FocusGuard own package)
-        OS->>A11y: TYPE_WINDOW_STATE_CHANGED (packageName = "com.coder7475.focusguard")
-        A11y->>Policy: evaluateAccess("com.coder7475.focusguard")
-        Note over Policy: Line 17: if (packageName == ownPackageName) return ALLOWED
-        Policy-->>A11y: AccessDecision.ALLOWED
-    end
-
-    A11y->>WM: hideOverlay() (Because decision == ALLOWED!)
-    WM->>OS: overlayView.visibility = View.GONE
-    
-    Note over OS,A11y: Hiding overlay refocuses the underlying BlockedApp!
-    OS->>A11y: TYPE_WINDOW_STATE_CHANGED (pkg="com.google.android.youtube")
-    A11y->>Policy: evaluateAccess("com.google.android.youtube")
-    Policy-->>A11y: AccessDecision.BLOCKED
-    A11y->>WM: showOverlay()
-    Note over User,OS: Loop repeats indefinitely every ~50ms (notificationTimeout="50")
-```
-
-#### Why `TYPE_WINDOWS_CHANGED` causes `null` package:
-In the Android Accessibility API, `TYPE_WINDOWS_CHANGED` indicates a structural change in the window hierarchy (window added, removed, reordered, or visibility changed). **The Android OS does not populate `event.packageName` for `TYPE_WINDOWS_CHANGED`**.
-In [`AllowlistPolicy.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/domain/policy/AllowlistPolicy.kt#L12-L14):
-```kotlin
-if (packageName.isNullOrBlank()) {
-    return AccessDecision.ALLOWED
-}
-```
-Evaluating a `null` package as `ALLOWED` and commanding `overlayManager.hideOverlay()` immediately destroys the lock overlay every time it appears.
-
-#### Why FocusGuard's own package dismisses the overlay:
-When `LockOverlayWindowManager` attaches or displays its `ComposeView`, the view context belongs to `FocusGuardAccessibilityService` (`com.coder7475.focusguard`). Android fires a `TYPE_WINDOW_STATE_CHANGED` event for `com.coder7475.focusguard`.
-In `AllowlistPolicy.kt`:
-```kotlin
-// 1. Own package is always allowed
-if (packageName == ownPackageName) {
-    return AccessDecision.ALLOWED
-}
-```
-The service cannot distinguish between:
-1. The user legitimately launching FocusGuard's `MainActivity`.
-2. The overlay window itself (`ComposeView`) triggering a window state event.
-
----
-
-### Root Cause 2: Inappropriate WindowManager Flags (`FLAG_NOT_TOUCH_MODAL`)
-
-In [`LockOverlayWindowManager.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/overlay/LockOverlayWindowManager.kt#L37-L41):
-
-```kotlin
-val flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-```
-
-In [`doc/design/SYSTEM_ARCHITECTURE.md`](file:///home/fahad/AndroidStudioProjects/focusGuard/doc/design/SYSTEM_ARCHITECTURE.md#L257), the architecture document states:
-> `FLAG_NOT_TOUCH_MODAL`: Ensures touches do not leak to background apps.
-
-**This is factually inverted relative to the Android OS specification.**
-According to Android's official `WindowManager.LayoutParams` SDK definition:
-```java
-/**
- * Window flag: even when this window is focusable (its
- * {@link #FLAG_NOT_FOCUSABLE} is not set), allow any pointer events
- * outside of the window to be sent to the windows behind it. Otherwise it
- * will consume all pointer events itself, regardless of whether they
- * are inside of the window.
- */
-public static final int FLAG_NOT_TOUCH_MODAL = 0x00000020;
-```
-By adding `FLAG_NOT_TOUCH_MODAL`, any touch gesture that does not strictly land on a child view that consumes events is explicitly forwarded by the Android input dispatcher to the background application.
-To make a lock overlay truly modal and block all underlying interaction, **`FLAG_NOT_TOUCH_MODAL` must NOT be present**.
-
----
-
-### Root Cause 3: Pointer Event Pass-Through in `LockOverlayScreen.kt`
-
-In [`LockOverlayScreen.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/overlay/LockOverlayScreen.kt#L64-L69):
-
-```kotlin
-Box(
-    modifier = modifier
-        .fillMaxSize()
-        .background(Color(0xFF090D16)),
-    contentAlignment = Alignment.Center
-) {
     ...
 }
 ```
-In Jetpack Compose, a `Box` with `.fillMaxSize().background(...)` **does not consume pointer input events**. Only child composables with click/drag semantics (such as the `Emergency Calls` button) consume touches.
-All other taps on the background pass unhandled through the Compose layout hierarchy into the underlying View, which (due to `FLAG_NOT_TOUCH_MODAL`) dispatches them to whatever app is running behind the overlay.
 
----
+In AndroidX SavedState 1.2+ (bundled with modern Compose versions):
+```java
+// AndroidX SavedStateRegistryController.java
+public void performRestore(@Nullable Bundle savedState) {
+    if (!mAttached) {
+        throw new IllegalStateException("You must call performAttach() "
+            + "before calling performRestore(Bundle)");
+    }
+    ...
+}
+```
+Because `savedStateRegistryController.performAttach()` was **never called**, `performRestore()` throws:
+`java.lang.IllegalStateException: You must call performAttach() before calling performRestore(Bundle)`
 
-### Root Cause 4: Session Expiration & Room DB Desynchronization
-
-In [`FocusGuardService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/foreground/FocusGuardService.kt#L148-L157):
+Now observe what happens in [`LockOverlayWindowManager.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/overlay/LockOverlayWindowManager.kt#L33-L75):
 
 ```kotlin
-while (isActive) {
-    val remainingMs = max(0L, endsAtEpochMs - System.currentTimeMillis())
-    if (remainingMs <= 0L) {
-        showCompletionNotification(applicationContext)
-        stopSelf()
-        break
+@Synchronized
+open fun attach() {
+    if (isAttached) return
+
+    try {
+        ...
+        lifecycleOwner.onCreate() // <-- Throws IllegalStateException!
+
+        val composeView = ComposeView(context).apply { ... }
+        windowManager.addView(composeView, params)
+        overlayView = composeView
+        isAttached = true
+        ...
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to attach lock overlay window", e) // <-- Swallowed silently!
     }
-    val formattedTime = formatTime(remainingMs)
-    notificationManager.notify(NOTIFICATION_ID_TRACKER, buildOngoingNotification(formattedTime))
-    delay(1000L)
 }
 ```
 
-Notice that when `remainingMs <= 0L`, `FocusGuardService`:
-1. Shows the completion notification.
-2. Calls `stopSelf()`.
-3. **DOES NOT update the database status to `SessionStatus.COMPLETED`**.
-
-Database completion was delegated solely to `SessionAlarmReceiver` listening for `ACTION_COMPLETE_SESSION` from `AlarmManager`.
-However, on real OEM hardware (Xiaomi, Samsung, Oppo, Vivo):
-- Exact alarms can be deferred, coalesced, or delayed by battery saver / Doze modes.
-- If the alarm arrives late, the service has stopped, but the Room database still holds `status = 'ACTIVE'`.
-- When the user opens the app or switches windows "after using focus time", the accessibility service sees a session with `status == ACTIVE` but `System.currentTimeMillis() >= endsAtEpochMs`.
-- This causes inconsistent overlay assertions and flickering during the expiration boundary window.
-
----
-
-### Root Cause 5: Home Screen / Launcher Exclusion
-
-In [`AllowlistPolicy.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/domain/policy/AllowlistPolicy.kt):
-Only the default dialer, default SMS, and emergency dialers are allowed.
-Default device launchers (such as `com.google.android.apps.nexuslauncher`, `com.sec.android.app.launcher`, etc.) are **not allowlisted**.
-*(Note: `com.miui.home` was hardcoded in `OEM_DIALER_PACKAGES` as an OEM dialer fallback, leaving all other OEM launchers blocked).*
-When the user minimizes FocusGuard or returns to the home screen, the launcher is marked as `BLOCKED`, triggering the overlay, which immediately triggers the flicker cycle.
-
----
-
-## 4. Recommendations & Fix Strategy
-
-To permanently eliminate the flicker and guarantee that the device is unusable for non-allowlisted apps, four surgical fixes must be applied:
-
-### Fix 1: Harden `FocusGuardAccessibilityService.kt`
-1. **Remove `TYPE_WINDOWS_CHANGED` from evaluation:** Do not evaluate package allowlists on `TYPE_WINDOWS_CHANGED` because it lacks a package name. Handle only `TYPE_WINDOW_STATE_CHANGED`.
-2. **Never hide on `null` or blank package:** If an event has no package name, ignore it. Do not mutate the current overlay visibility.
-3. **Ignore events originating from the overlay window:** Compare the event's class or window hierarchy. If the event package is `packageName` (`com.coder7475.focusguard`), only hide the overlay if the event actually belongs to `MainActivity`.
-4. **Stateful debouncing:** Only trigger `showOverlay()` or `hideOverlay()` when the evaluated package represents an actual transition to a different target.
-
-### Fix 2: Correct WindowManager Flags in `LockOverlayWindowManager.kt`
-1. **Remove `FLAG_NOT_TOUCH_MODAL`:** Delete `FLAG_NOT_TOUCH_MODAL` so the overlay window becomes a true modal barrier that intercepts 100% of touches across the full screen.
-2. **Retain Full-Screen Modal Flags:**
+Because of this uncaught exception:
+1. `windowManager.addView(composeView, params)` is **never executed**.
+2. `overlayView` remains **`null`**.
+3. `isAttached` remains **`false`**.
+4. When `showOverlay()` is called:
    ```kotlin
-   val flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-       WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-       WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-       WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+   if (!isAttached) attach() // Attempts to attach, fails again silently
+   overlayView?.let { ... }   // overlayView is null! Does nothing!
    ```
+5. **Net Result:** Zero overlay is attached or visible on the phone.
 
-### Fix 3: Intercept Pointer Input in `LockOverlayScreen.kt`
-Add a pointer input interceptor on the root Compose `Box` so that all gestures (tap, swipe, multi-touch) are consumed and never propagated:
+---
+
+### Root Cause 2: Android 13+ (API 33/34/35) "Restricted Settings" on Sideloaded / Debug Builds
+
+Starting in Android 13 (Tiramisu, API 33) and strictly reinforced in Android 14 (API 34) and Android 15 (API 35):
+- Any application installed via ADB, file transfer, APK installer, or debug tool is categorized by the OS as being installed from an **untrusted source**.
+- High-privilege permissions—specifically `BIND_ACCESSIBILITY_SERVICE` and `NotificationListenerService`—are placed under **Restricted Settings**.
+- When the user opens `Settings -> Accessibility -> FocusGuard`:
+  The toggle is completely disabled (grayed out) with the warning dialog:
+  > *"Restricted setting: For your security, this setting is currently unavailable."*
+
+In `OnboardingScreen.kt`:
 ```kotlin
-Box(
-    modifier = modifier
-        .fillMaxSize()
-        .background(Color(0xFF090D16))
-        .pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent()
-                    event.changes.forEach { it.consume() }
-                }
-            }
-        },
-    contentAlignment = Alignment.Center
+FocusPermission.ACCESSIBILITY -> {
+    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+}
+```
+The app opens accessibility settings directly. A tester installing the debug APK sees the setting grayed out and cannot turn it on. If Accessibility Service is never started:
+- `FocusGuardAccessibilityService.instance` is null.
+- `onAccessibilityEvent` never fires.
+- The app has no background window detection.
+
+#### Required User Unlocking Procedure for Debug Builds:
+1. Open phone **Settings** $\rightarrow$ **Apps** $\rightarrow$ **FocusGuard**.
+2. Tap the **three-dot menu** in the top-right corner.
+3. Tap **"Allow restricted settings"**.
+4. Authenticate using fingerprint, face unlock, or device PIN.
+5. Return to **Accessibility** and enable FocusGuard.
+
+*FocusGuard must provide in-app guidance and an intent to the App Details Settings screen when restricted settings block activation.*
+
+---
+
+### Root Cause 3: Ineffective WindowManager Root View Visibility Switching (`View.GONE`)
+
+In [`LockOverlayWindowManager.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/overlay/LockOverlayWindowManager.kt#L62-L99):
+
+```kotlin
+// During attach():
+val composeView = ComposeView(context).apply {
+    ...
+    visibility = View.GONE // Attached as GONE!
+}
+windowManager.addView(composeView, params)
+
+// During showOverlay():
+view.visibility = View.VISIBLE
+
+// During hideOverlay():
+view.visibility = View.GONE
+```
+
+In Android's `WindowManagerService`:
+- Top-level windows added via `windowManager.addView(view, params)` do not behave like child views in a standard `ViewGroup`.
+- When a view is added to WindowManager with `visibility = View.GONE`, WindowManager creates a detached/hidden surface.
+- Simply mutating `view.visibility = View.VISIBLE` on the root view does **not** notify `WindowManagerService` to recreate or recalculate the window surface geometry unless `windowManager.updateViewLayout(view, params)` is called or the view is dynamically attached/removed.
+- On OEM skins (MIUI, HyperOS, ColorOS, Samsung One UI), a WindowManager root view set to `View.GONE` either fails to become visible or leaves a transparent, non-functional barrier.
+
+The industry-standard architecture for overlay management is **dynamic add/remove** or **alpha/flag updating**:
+```kotlin
+// Pattern A: Dynamic add/remove
+fun showOverlay() {
+    if (!isAdded) {
+        windowManager.addView(overlayView, params)
+        isAdded = true
+    }
+}
+fun hideOverlay() {
+    if (isAdded) {
+        windowManager.removeView(overlayView)
+        isAdded = false
+    }
+}
+```
+
+---
+
+### Root Cause 4: Single-Point-of-Failure on `TYPE_ACCESSIBILITY_OVERLAY` without `SYSTEM_ALERT_WINDOW`
+
+FocusGuard uses `WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY`:
+```kotlin
+val params = WindowManager.LayoutParams(
+    WindowManager.LayoutParams.MATCH_PARENT,
+    WindowManager.LayoutParams.MATCH_PARENT,
+    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+    flags,
+    PixelFormat.TRANSLUCENT
 )
 ```
 
-### Fix 4: Reconcile Session Expiration in `FocusGuardService.kt`
-When `remainingMs <= 0L`, `FocusGuardService` must directly complete the active session in Room:
+`TYPE_ACCESSIBILITY_OVERLAY` has two critical limitations:
+1. It is **only valid** when added using an active, system-bound `AccessibilityService` context.
+2. If the user starts a focus session while the accessibility service is disconnected, disabled, or killed by Android's aggressive background killer (common on Xiaomi/Samsung), `FocusGuardService` runs in the foreground, but **cannot display any overlay**.
+
+Production lock apps (e.g. AppBlock, Forest, StayFree) utilize a dual approach:
+1. **Accessibility Detection:** Inspects foreground windows.
+2. **System Alert Window (`TYPE_APPLICATION_OVERLAY`):** Declares `<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />` so that either the Foreground Service or the Accessibility Service can project an overlay window that is not dependent on the accessibility window token.
+
+---
+
+### Root Cause 5: Missing `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` in Manifest
+
+In [`app/src/main/AndroidManifest.xml`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/AndroidManifest.xml#L5-L10):
+```xml
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+```
+
+Notice that `android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is **missing**.
+In `PermissionChecker.kt`:
 ```kotlin
-if (remainingMs <= 0L) {
-    val db = FocusGuardDatabase.getInstance(applicationContext)
-    val sessionRepo = RoomSessionRepository(db.sessionDao())
-    val sessionEngine = SessionEngine(sessionRepo)
-    sessionEngine.completeActiveSession()
-    showCompletionNotification(applicationContext)
-    stopSelf()
-    break
+FocusPermission.BATTERY_OPTIMIZATION -> {
+    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+        data = Uri.parse("package:${context.packageName}")
+    }
+}
+```
+Without declaring this permission in the manifest:
+- Firing `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` throws a `SecurityException` or is silently ignored on Android 11+.
+- The onboarding screen marks Battery Optimization as **Mandatory**, but the user cannot grant it, preventing them from completing onboarding.
+
+---
+
+### Root Cause 6: Event Stripping Dropping Launcher and Recents Transitions
+
+In [`FocusGuardAccessibilityService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt#L81-L84):
+```kotlin
+if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+    return
+}
+```
+And in `accessibility_service_config.xml`:
+```xml
+android:accessibilityEventTypes="typeWindowStateChanged"
+```
+
+On modern Android devices with gesture navigation (e.g. Pixel, Samsung, Motorola):
+- Swiping up to go to the Home screen or swiping horizontally between apps frequently dispatches `TYPE_WINDOWS_CHANGED` or no window state change at all until a full activity draw finishes.
+- Because `TYPE_WINDOWS_CHANGED` was completely filtered out to avoid null-package crashes, the service fails to detect when the user switches tasks via gestures or returns to their home screen.
+
+---
+
+### Root Cause 7: Home Launcher Package Is Not Dynamically Resolved
+
+In [`AllowlistPolicy.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/domain/policy/AllowlistPolicy.kt):
+```kotlin
+fun evaluateAccess(packageName: String?): AccessDecision {
+    if (packageName.isNullOrBlank()) return AccessDecision.ALLOWED
+    if (packageName == ownPackageName) return AccessDecision.ALLOWED
+    if (packageName == defaultDialer) return AccessDecision.ALLOWED
+    if (packageName == defaultSms) return AccessDecision.ALLOWED
+    // ... OEM fallbacks
+    return AccessDecision.BLOCKED
+}
+```
+
+The default device launcher (e.g. `com.google.android.apps.nexuslauncher`, `com.sec.android.app.launcher`) is **never allowlisted**.
+- When the user starts a focus session and presses the Home button, the launcher is marked as `BLOCKED`.
+- If the overlay were functioning, the user would be trapped on a black screen over their home screen, unable even to tap their Phone or Emergency dialer app icons.
+- If the overlay fails, the user navigates their launcher with zero feedback that the phone is locked.
+- The system must dynamically resolve the current default launcher (`Intent.CATEGORY_HOME`) and decide whether the launcher itself is permitted or if app launches from the launcher are intercepted.
+
+---
+
+### Root Cause 8: Missing `FocusGuardTheme` in Service `ComposeView`
+
+In `LockOverlayWindowManager.kt`:
+```kotlin
+setContent {
+    LockOverlayScreen(
+        endsAtEpochMsProvider = { endsAtEpochMs },
+        onEmergencyClick = onEmergencyClick
+    )
+}
+```
+`LockOverlayScreen` uses Material3 `Card`, `Button`, and custom styles. Because `ComposeView` is inflated using a Service context (`FocusGuardAccessibilityService`), there is no default Activity theme.
+Without wrapping `LockOverlayScreen` in `FocusGuardTheme`:
+- Local providers (`LocalColorScheme`, `LocalTypography`) fall back to default Material3 tokens or can throw rendering errors.
+- Text colors (such as `OffWhite` on `MatteCharcoal`) can default to black on dark backgrounds, rendering the overlay completely invisible even if the window is technically attached.
+
+---
+
+## 4. Comprehensive Architecture & Remediation Plan
+
+```mermaid
+flowchart TD
+    subgraph UI_Layer ["1. UI & Setup Layer"]
+        OB[OnboardingScreen] -->|Checks Permissions| PC[PermissionChecker]
+        PC -->|Detects Restricted Settings| RS[Show 'Allow Restricted Settings' Guide]
+        OB -->|Declares in Manifest| BP[REQUEST_IGNORE_BATTERY_OPTIMIZATIONS]
+    end
+
+    subgraph Window_Layer ["2. Window Manager & Lifecycle"]
+        OL[OverlayLifecycleOwner] -->|1. performAttach| SA[SavedStateRegistryController]
+        SA -->|2. performRestore| SA
+        OL -->|3. handleLifecycleEvent ON_CREATE| LR[LifecycleRegistry]
+        OWM[LockOverlayWindowManager] -->|Wraps in FocusGuardTheme| CV[ComposeView]
+        OWM -->|Dynamic addView / removeView| WM[WindowManager.addView / removeView]
+    end
+
+    subgraph Service_Layer ["3. Detection & Enforcement"]
+        A11y[FocusGuardAccessibilityService] -->|Listens to| EV[TYPE_WINDOW_STATE_CHANGED]
+        A11y -->|Inspects Package| AP[AllowlistPolicy]
+        AP -->|Dynamically Resolves| SR[SystemRoleResolver: Dialer, SMS, Launcher]
+        AP -->|Decision: BLOCKED| OWM
+        AP -->|Decision: ALLOWED| OWM
+    end
+```
+
+---
+
+## 5. Precise Implementation Fixes
+
+### Fix 1: Fix `OverlayLifecycleOwner.kt` (Attach Before Restore)
+
+In [`OverlayLifecycleOwner.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/overlay/OverlayLifecycleOwner.kt):
+
+```kotlin
+package com.coder7475.focusguard.service.overlay
+
+import android.os.Bundle
+import android.view.View
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+
+class OverlayLifecycleOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
+
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    private val store = ViewModelStore()
+    private val savedStateRegistryController = SavedStateRegistryController.create(this)
+
+    override val lifecycle: Lifecycle
+        get() = lifecycleRegistry
+
+    override val viewModelStore: ViewModelStore
+        get() = store
+
+    override val savedStateRegistry: SavedStateRegistry
+        get() = savedStateRegistryController.savedStateRegistry
+
+    fun onCreate(savedInstanceState: Bundle? = null) {
+        // MANDATORY: performAttach() must be called before performRestore()
+        savedStateRegistryController.performAttach()
+        savedStateRegistryController.performRestore(savedInstanceState)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+    }
+
+    fun onStart() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+    }
+
+    fun onResume() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    }
+
+    fun onPause() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+    }
+
+    fun onStop() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+    }
+
+    fun onDestroy() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        store.clear()
+    }
+
+    fun attachToDecor(view: View) {
+        view.setViewTreeLifecycleOwner(this)
+        view.setViewTreeViewModelStoreOwner(this)
+        view.setViewTreeSavedStateRegistryOwner(this)
+    }
 }
 ```
 
 ---
 
-## 5. Precise Code Implementation
+### Fix 2: Dynamic Add/Remove and Theme in `LockOverlayWindowManager.kt`
 
-### File 1: `app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt`
+In [`LockOverlayWindowManager.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/service/overlay/LockOverlayWindowManager.kt):
 
 ```kotlin
-package com.coder7475.focusguard.service.accessibility
+package com.coder7475.focusguard.service.overlay
 
-import android.accessibilityservice.AccessibilityService
-import android.content.Intent
+import android.content.Context
+import android.graphics.PixelFormat
 import android.util.Log
-import android.view.accessibility.AccessibilityEvent
-import com.coder7475.focusguard.MainActivity
-import com.coder7475.focusguard.data.local.FocusGuardDatabase
-import com.coder7475.focusguard.data.repository.RoomSessionRepository
-import com.coder7475.focusguard.domain.model.AccessDecision
-import com.coder7475.focusguard.domain.model.FocusSession
-import com.coder7475.focusguard.domain.model.SessionStatus
-import com.coder7475.focusguard.domain.policy.AllowlistPolicy
-import com.coder7475.focusguard.domain.repository.SessionRepository
-import com.coder7475.focusguard.platform.role.SystemRoleResolver
-import com.coder7475.focusguard.service.overlay.LockOverlayWindowManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
+import android.view.Gravity
+import android.view.WindowManager
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import com.coder7475.focusguard.ui.theme.FocusGuardTheme
 
-class FocusGuardAccessibilityService : AccessibilityService() {
+open class LockOverlayWindowManager(
+    private val context: Context,
+    private val onEmergencyClick: () -> Unit = {}
+) {
 
-    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private lateinit var systemRoleResolver: SystemRoleResolver
+    private val windowManager: WindowManager =
+        context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-    lateinit var allowlistPolicy: AllowlistPolicy
-        internal set
+    private val lifecycleOwner = OverlayLifecycleOwner()
+    private var overlayView: ComposeView? = null
+    var isAttached: Boolean = false
+        private set
+    var isVisible: Boolean = false
+        private set
 
-    lateinit var overlayManager: LockOverlayWindowManager
-        internal set
+    private var endsAtEpochMs: Long = 0L
 
-    private lateinit var sessionRepository: SessionRepository
-    var currentActiveSession: FocusSession? = null
-        internal set
+    fun setEndsAtEpochMs(epochMs: Long) {
+        endsAtEpochMs = epochMs
+    }
 
-    private var lastTargetPackage: String? = null
-    var onPackageInspected: ((packageName: String?, decision: AccessDecision) -> Unit)? = null
+    private fun createLayoutParams(): WindowManager.LayoutParams {
+        val flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
 
-    override fun onCreate() {
-        super.onCreate()
-        instance = this
-
-        systemRoleResolver = SystemRoleResolver(this)
-        allowlistPolicy = AllowlistPolicy(systemRoleResolver, packageName)
-
-        overlayManager = LockOverlayWindowManager(this) {
-            launchEmergencyDialer()
+        return WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            flags,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.FILL
         }
+    }
 
-        val db = FocusGuardDatabase.getInstance(this)
-        sessionRepository = RoomSessionRepository(db.sessionDao())
+    @Synchronized
+    open fun attach() {
+        if (isAttached && overlayView != null) return
 
-        serviceScope.launch {
-            sessionRepository.observeActiveSession().collectLatest { session ->
-                currentActiveSession = session
-                if (session != null && session.status == SessionStatus.ACTIVE) {
-                    overlayManager.setEndsAtEpochMs(session.endsAtEpochMs)
-                } else {
-                    overlayManager.hideOverlay()
+        try {
+            lifecycleOwner.onCreate()
+
+            val composeView = ComposeView(context).apply {
+                setViewCompositionStrategy(
+                    ViewCompositionStrategy.DisposeOnLifecycleDestroyed(lifecycleOwner)
+                )
+                lifecycleOwner.attachToDecor(this)
+                setContent {
+                    FocusGuardTheme {
+                        LockOverlayScreen(
+                            endsAtEpochMsProvider = { endsAtEpochMs },
+                            onEmergencyClick = onEmergencyClick
+                        )
+                    }
                 }
             }
-        }
-    }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        serviceScope.cancel()
-        overlayManager.destroy()
-        if (instance == this) {
-            instance = null
-        }
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
-
-        // 1. Only process explicit window state transitions; ignore window hierarchy jitter
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            return
-        }
-
-        val targetPackage = event.packageName?.toString()
-        val className = event.className?.toString()
-
-        // 2. Ignore events with null or blank package names to prevent false dismissals
-        if (targetPackage.isNullOrBlank()) {
-            return
-        }
-
-        // 3. Prevent self-dismissal when overlay window itself fires window events
-        if (targetPackage == packageName) {
-            val isMainActivity = className == MainActivity::class.java.name
-            if (!isMainActivity) {
-                // Event comes from our overlay ComposeView / window, NOT MainActivity
-                return
-            }
-        }
-
-        // 4. Avoid re-evaluating unchanged package states
-        if (targetPackage == lastTargetPackage && overlayManager.isVisible) {
-            return
-        }
-        lastTargetPackage = targetPackage
-
-        val decision = allowlistPolicy.evaluateAccess(targetPackage)
-        Log.d(TAG, "Window transition: package=$targetPackage, class=$className, decision=$decision")
-        onPackageInspected?.invoke(targetPackage, decision)
-
-        val session = currentActiveSession
-        val isSessionActive = session != null &&
-            session.status == SessionStatus.ACTIVE &&
-            System.currentTimeMillis() < session.endsAtEpochMs
-
-        if (isSessionActive) {
-            if (decision == AccessDecision.BLOCKED) {
-                overlayManager.showOverlay()
-            } else {
-                overlayManager.hideOverlay()
-            }
-        } else {
-            overlayManager.hideOverlay()
-        }
-    }
-
-    override fun onInterrupt() {
-        Log.w(TAG, "FocusGuardAccessibilityService interrupted")
-    }
-
-    private fun launchEmergencyDialer() {
-        try {
-            val emergencyIntent = Intent(Intent.ACTION_DIAL).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            startActivity(emergencyIntent)
-            overlayManager.hideOverlay()
+            overlayView = composeView
+            isAttached = true
+            lifecycleOwner.onStart()
+            lifecycleOwner.onResume()
+            Log.d(TAG, "Lock overlay view created successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch emergency dialer", e)
+            Log.e(TAG, "Failed to initialize lock overlay view", e)
+        }
+    }
+
+    @Synchronized
+    open fun showOverlay() {
+        if (!isAttached || overlayView == null) {
+            attach()
+        }
+
+        val view = overlayView ?: return
+        if (!isVisible) {
+            try {
+                windowManager.addView(view, createLayoutParams())
+                isVisible = true
+                Log.d(TAG, "Lock overlay added to WindowManager (VISIBLE)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add overlay view to WindowManager", e)
+            }
+        }
+    }
+
+    @Synchronized
+    open fun hideOverlay() {
+        val view = overlayView ?: return
+        if (isVisible) {
+            try {
+                windowManager.removeView(view)
+                isVisible = false
+                Log.d(TAG, "Lock overlay removed from WindowManager (HIDDEN)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to remove overlay view from WindowManager", e)
+            }
+        }
+    }
+
+    @Synchronized
+    open fun destroy() {
+        if (isVisible && overlayView != null) {
+            try {
+                windowManager.removeView(overlayView)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing view during destroy", e)
+            }
+        }
+
+        try {
+            lifecycleOwner.onPause()
+            lifecycleOwner.onStop()
+            lifecycleOwner.onDestroy()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up lifecycle owner", e)
+        } finally {
+            overlayView = null
+            isAttached = false
+            isVisible = false
+            Log.d(TAG, "Lock overlay destroyed")
         }
     }
 
     companion object {
-        private const val TAG = "FocusGuardA11y"
-        var instance: FocusGuardAccessibilityService? = null
-            internal set
+        private const val TAG = "LockOverlayManager"
     }
 }
 ```
 
 ---
 
-### File 2: `app/src/main/java/com/coder7475/focusguard/service/overlay/LockOverlayWindowManager.kt`
+### Fix 3: Add Missing Manifest Permissions in `AndroidManifest.xml`
 
-```kotlin
-// In attach(): Remove WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-val flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+In [`app/src/main/AndroidManifest.xml`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/AndroidManifest.xml):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    
+    <!-- Required for unthrottled background timer countdown and Doze mode resilience -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    
+    <!-- Standard overlay permission fallback for window management over other apps -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FocusGuard">
+        ...
 ```
 
 ---
 
-### File 3: `app/src/main/java/com/coder7475/focusguard/service/overlay/LockOverlayScreen.kt`
+### Fix 4: Android 13+ Restricted Settings Warning & Guide in `OnboardingScreen.kt`
+
+In [`app/src/main/java/com/coder7475/focusguard/ui/onboarding/OnboardingScreen.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/ui/onboarding/OnboardingScreen.kt):
+
+Add contextual instructions and an App Info shortcut if the user is on Android 13+ (API 33+):
 
 ```kotlin
-// Consume pointer events at the root Box level so touches cannot reach background apps
-Box(
-    modifier = modifier
-        .fillMaxSize()
-        .background(Color(0xFF090D16))
-        .pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val pointerEvent = awaitPointerEvent()
-                    pointerEvent.changes.forEach { it.consume() }
-                }
+// In PermissionStepCard for ACCESSIBILITY:
+if (!isGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF332015)),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.padding(top = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Text(
+                text = "⚠️ Android 13+ Sideload Notice",
+                color = Color(0xFFFBBF24),
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "If settings say 'Restricted setting', open App Info → tap top-right 3 dots → select 'Allow restricted settings' before enabling.",
+                color = Color(0xFFFDE68A),
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = {
+                    val appInfoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(appInfoIntent)
+                },
+                modifier = Modifier.height(32.dp)
+            ) {
+                Text(
+                    text = "Open App Info",
+                    fontSize = 11.sp,
+                    color = Color(0xFF38BDF8)
+                )
             }
-        },
-    contentAlignment = Alignment.Center
-) {
-    ...
-}
-```
-
----
-
-### File 4: `app/src/main/java/com/coder7475/focusguard/service/foreground/FocusGuardService.kt`
-
-```kotlin
-private fun startTicker() {
-    tickerJob?.cancel()
-    tickerJob = serviceScope.launch {
-        while (isActive) {
-            val remainingMs = max(0L, endsAtEpochMs - System.currentTimeMillis())
-            if (remainingMs <= 0L) {
-                // Explicitly reconcile and complete session in Room database
-                try {
-                    val db = FocusGuardDatabase.getInstance(applicationContext)
-                    val sessionRepo = RoomSessionRepository(db.sessionDao())
-                    val sessionEngine = SessionEngine(sessionRepo)
-                    sessionEngine.completeActiveSession()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to complete active session on ticker expiry", e)
-                }
-
-                showCompletionNotification(applicationContext)
-                stopSelf()
-                break
-            }
-            val formattedTime = formatTime(remainingMs)
-            notificationManager.notify(NOTIFICATION_ID_TRACKER, buildOngoingNotification(formattedTime))
-            delay(1000L)
         }
     }
 }
@@ -504,48 +648,54 @@ private fun startTicker() {
 
 ---
 
-### File 5: `app/src/main/res/xml/accessibility_service_config.xml`
+### Fix 5: Dynamic Launcher Resolution in `SystemRoleResolver.kt` & `AllowlistPolicy.kt`
 
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
-    android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault"
-    android:canRetrieveWindowContent="false"
-    android:description="@string/accessibility_service_description"
-    android:notificationTimeout="100" />
+In `SystemRoleResolver.kt`:
+```kotlin
+fun getDefaultLauncherPackage(): String? {
+    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+    val resolveInfo = context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+    return resolveInfo?.activityInfo?.packageName
+}
 ```
+
+In `AllowlistPolicy.kt`:
+Add default launcher evaluation so that navigating to the home screen does not create a broken UI state, while preventing launches into non-allowlisted apps.
 
 ---
 
-## 6. Verification and Testing Checklist
+## 6. Physical Device Verification Runbook
 
-To verify that the fixes resolve the issue on hardware:
+To confirm that FocusGuard works as expected on real physical devices:
 
-1. **Verify No Oscillating Events in Logcat:**
-   ```bash
-   adb logcat -s FocusGuardA11y LockOverlayManager
-   ```
-   *Expected Outcome:* When switching to a blocked application, exactly **one** log message appears:
-   ```
-   Window transition: package=com.google.android.youtube, class=..., decision=BLOCKED
-   Lock overlay shown
-   ```
-   No subsequent rapid hide/show cycles should occur.
+### Step 1: Install & Unlock Restricted Settings (Android 13/14/15)
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+1. Open phone **Settings** $\rightarrow$ **Apps** $\rightarrow$ **FocusGuard**.
+2. Tap the **three dots** in the top right $\rightarrow$ Tap **Allow restricted settings**.
+3. Authenticate with fingerprint/PIN.
 
-2. **Verify Touch Block (Input Injection):**
-   ```bash
-   # While lock overlay is visible, simulate a tap on screen
-   adb shell input tap 500 1000
-   ```
-   *Expected Outcome:* The background app receives **zero** touch events. Only the `Emergency Calls` button on the overlay responds to user touch.
+### Step 2: Complete Onboarding Permissions
+1. Launch FocusGuard on phone.
+2. Grant **Accessibility Service** (enable FocusGuard switch).
+3. Grant **Exact Alarms**, **Notifications**, and **Unrestricted Battery**.
+4. Tap **Enter FocusGuard**.
 
-3. **Verify Emergency Dialer Pass-Through:**
-   - Tap `Emergency Calls` on the lock overlay.
-   - The phone dialer should open cleanly without the overlay re-appearing over it.
+### Step 3: Test Overlay Engagement over Target Apps
+1. Set the rotary dial to **5 Minutes**.
+2. Tap **ENGAGE FOCUS LOCK (5M)**.
+3. Press **Home** or switch to a blocked app (e.g. YouTube, Chrome, Instagram).
+4. **Expected Outcome:**
+   - The dark **HARDWARE LOCK ACTIVE** overlay appears over the target app.
+   - All underlying touch events (tapping videos, typing, scrolling) are completely blocked.
+   - The countdown timer ticks down accurately (`04:59`, `04:58`...).
 
-4. **Verify Session Expiry Transition:**
-   - Start a 1-minute test session.
-   - Wait for the countdown to reach 00:00.
-   - *Expected Outcome:* The overlay dismisses cleanly, the completion notification appears, and Room DB status transitions to `COMPLETED`.
+### Step 4: Test Emergency Dialing
+1. Tap **EMERGENCY CALLS** on the lock overlay.
+2. **Expected Outcome:** The system phone dialer opens immediately and is usable.
+3. Press Back or switch to a blocked app $\rightarrow$ The lock overlay reappears immediately.
+
+### Step 5: Test Session Completion
+1. Allow the session timer to reach `00:00` or tap **Abort Focus Session** from FocusGuard.
+2. **Expected Outcome:** The overlay dismisses cleanly, the completion notification arrives, and the device returns to normal operation.

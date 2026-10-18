@@ -23,9 +23,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -44,6 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,8 +65,8 @@ import java.util.Locale
 @Composable
 fun SchedulesScreen(
     scheduleRepository: ScheduleRepository,
-    onScheduleChanged: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onScheduleChanged: () -> Unit = {}
 ) {
     val schedules by scheduleRepository.observeAllSchedules().collectAsState(initial = emptyList())
     var showAddDialog by remember { mutableStateOf(false) }
@@ -201,12 +200,9 @@ fun ScheduleCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val startH = schedule.startMinuteOfDay / 60
-    val startM = schedule.startMinuteOfDay % 60
-    val endH = schedule.endMinuteOfDay / 60
-    val endM = schedule.endMinuteOfDay % 60
-
-    val timeFormatted = String.format(Locale.US, "%02d:%02d – %02d:%02d", startH, startM, endH, endM)
+    val startFormatted = ScheduleTimeFormatter.formatMinuteOfDay(schedule.startMinuteOfDay)
+    val endFormatted = ScheduleTimeFormatter.formatMinuteOfDay(schedule.endMinuteOfDay)
+    val timeFormatted = "$startFormatted – $endFormatted"
     val isOvernight = schedule.endMinuteOfDay <= schedule.startMinuteOfDay
 
     Card(
@@ -321,13 +317,21 @@ fun AddScheduleDialog(
     onConfirm: (name: String, startMinute: Int, endMinute: Int, daysBitmask: Int) -> Unit
 ) {
     var name by remember { mutableStateOf("Deep Work") }
-    var startHour by remember { mutableIntStateOf(9) }
+    var startHour12 by remember { mutableIntStateOf(9) }
     var startMinute by remember { mutableIntStateOf(0) }
-    var endHour by remember { mutableIntStateOf(17) }
+    var startIsAm by remember { mutableStateOf(true) }
+
+    var endHour12 by remember { mutableIntStateOf(5) }
     var endMinute by remember { mutableIntStateOf(0) }
+    var endIsAm by remember { mutableStateOf(false) }
+
     var daysBitmask by remember { mutableIntStateOf(ScheduleEngine.createWeekdayBitmask(
         DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
     )) }
+
+    val startTotal = ScheduleTimeFormatter.convert12HourToMinuteOfDay(startHour12, startMinute, startIsAm)
+    val endTotal = ScheduleTimeFormatter.convert12HourToMinuteOfDay(endHour12, endMinute, endIsAm)
+    val isOvernight = endTotal <= startTotal
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -357,13 +361,31 @@ fun AddScheduleDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Text(
-                    text = "TIME RANGE",
-                    color = TextMuted,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TIME RANGE",
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (isOvernight) {
+                        Text(
+                            text = "OVERNIGHT",
+                            color = SignalAmber,
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .background(SignalAmber.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -372,21 +394,25 @@ fun AddScheduleDialog(
                 ) {
                     TimePickerSelector(
                         label = "START",
-                        hour = startHour,
+                        hour12 = startHour12,
                         minute = startMinute,
-                        onTimeChanged = { h, m ->
-                            startHour = h
+                        isAm = startIsAm,
+                        onTimeChanged = { h, m, am ->
+                            startHour12 = h
                             startMinute = m
+                            startIsAm = am
                         }
                     )
-                    Text(text = "➔", color = TextMuted, fontSize = 18.sp)
+                    Text(text = "➔", color = TextMuted, fontSize = 16.sp)
                     TimePickerSelector(
                         label = "END",
-                        hour = endHour,
+                        hour12 = endHour12,
                         minute = endMinute,
-                        onTimeChanged = { h, m ->
-                            endHour = h
+                        isAm = endIsAm,
+                        onTimeChanged = { h, m, am ->
+                            endHour12 = h
                             endMinute = m
+                            endIsAm = am
                         }
                     )
                 }
@@ -438,8 +464,6 @@ fun AddScheduleDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val startTotal = startHour * 60 + startMinute
-                    val endTotal = endHour * 60 + endMinute
                     onConfirm(name, startTotal, endTotal, daysBitmask)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = SafetyOrange),
@@ -461,11 +485,12 @@ fun AddScheduleDialog(
 }
 
 @Composable
-private fun TimePickerSelector(
+fun TimePickerSelector(
     label: String,
-    hour: Int,
+    hour12: Int,
     minute: Int,
-    onTimeChanged: (hour: Int, minute: Int) -> Unit
+    isAm: Boolean,
+    onTimeChanged: (hour12: Int, minute: Int, isAm: Boolean) -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
@@ -475,18 +500,93 @@ private fun TimePickerSelector(
             fontFamily = FontFamily.Monospace
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             NumberSpinner(
-                value = hour,
-                max = 23,
-                onValueChange = { onTimeChanged(it, minute) }
+                value = hour12,
+                min = 1,
+                max = 12,
+                onValueChange = { onTimeChanged(it, minute, isAm) }
             )
-            Text(text = ":", color = OffWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp))
+            Text(
+                text = ":",
+                color = OffWhite,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
             NumberSpinner(
                 value = minute,
-                max = 59,
+                min = 0,
+                max = 55,
                 step = 5,
-                onValueChange = { onTimeChanged(hour, it) }
+                onValueChange = { onTimeChanged(hour12, it, isAm) }
+            )
+            Spacer(modifier = Modifier.width(2.dp))
+            AmPmToggle(
+                isAm = isAm,
+                onAmPmChanged = { onTimeChanged(hour12, minute, it) }
+            )
+        }
+    }
+}
+
+@Composable
+fun AmPmToggle(
+    isAm: Boolean,
+    onAmPmChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+
+    Row(
+        modifier = modifier
+            .background(MatteCharcoal, RoundedCornerShape(6.dp))
+            .border(1.dp, BorderDark, RoundedCornerShape(6.dp))
+            .padding(2.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (isAm) SafetyOrange else Color.Transparent)
+                .clickable {
+                    if (!isAm) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onAmPmChanged(true)
+                    }
+                }
+                .padding(horizontal = 6.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = "AM",
+                color = if (isAm) MatteCharcoal else TextMuted,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp
+            )
+        }
+
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (!isAm) SafetyOrange else Color.Transparent)
+                .clickable {
+                    if (isAm) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onAmPmChanged(false)
+                    }
+                }
+                .padding(horizontal = 6.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = "PM",
+                color = if (!isAm) MatteCharcoal else TextMuted,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp
             )
         }
     }
@@ -495,18 +595,22 @@ private fun TimePickerSelector(
 @Composable
 private fun NumberSpinner(
     value: Int,
+    min: Int = 0,
     max: Int,
     step: Int = 1,
     onValueChange: (Int) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .background(MatteCharcoal, RoundedCornerShape(6.dp))
             .border(1.dp, BorderDark, RoundedCornerShape(6.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
             .clickable {
-                val next = (value + step) % (max + 1)
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                val next = if (value + step > max) min else value + step
                 onValueChange(next)
             }
     ) {
@@ -514,7 +618,7 @@ private fun NumberSpinner(
             text = String.format(Locale.US, "%02d", value),
             color = OffWhite,
             fontFamily = FontFamily.Monospace,
-            fontSize = 16.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Bold
         )
     }

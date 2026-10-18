@@ -45,6 +45,17 @@ class AllowlistPolicy(
             return AccessDecision.ALLOWED
         }
 
+        // 7. Resolved default home launcher
+        val defaultLauncher = systemRoleResolver.getDefaultLauncherPackage()
+        if (!defaultLauncher.isNullOrBlank() && packageName == defaultLauncher) {
+            return AccessDecision.ALLOWED
+        }
+
+        // 8. Fallback OEM launchers
+        if (SystemRoleResolver.OEM_LAUNCHER_PACKAGES.contains(packageName)) {
+            return AccessDecision.ALLOWED
+        }
+
         return AccessDecision.BLOCKED
     }
 }

@@ -18,6 +18,7 @@ class AllowlistPolicyTest {
     fun setUp() {
         every { systemRoleResolver.getDefaultDialerPackage() } returns "com.custom.dialer"
         every { systemRoleResolver.getDefaultSmsPackage() } returns "com.custom.sms"
+        every { systemRoleResolver.getDefaultLauncherPackage() } returns "com.custom.launcher"
         policy = AllowlistPolicy(systemRoleResolver, ownPackage)
     }
 
@@ -36,6 +37,12 @@ class AllowlistPolicyTest {
     @Test
     fun `default SMS app resolved at runtime is allowed`() {
         val decision = policy.evaluateAccess("com.custom.sms")
+        assertEquals(AccessDecision.ALLOWED, decision)
+    }
+
+    @Test
+    fun `default launcher resolved at runtime is allowed`() {
+        val decision = policy.evaluateAccess("com.custom.launcher")
         assertEquals(AccessDecision.ALLOWED, decision)
     }
 
@@ -60,6 +67,14 @@ class AllowlistPolicyTest {
         for (sms in SystemRoleResolver.OEM_SMS_PACKAGES) {
             val decision = policy.evaluateAccess(sms)
             assertEquals("Expected $sms to be allowed", AccessDecision.ALLOWED, decision)
+        }
+    }
+
+    @Test
+    fun `known OEM launcher packages are allowed as fallbacks`() {
+        for (launcher in SystemRoleResolver.OEM_LAUNCHER_PACKAGES) {
+            val decision = policy.evaluateAccess(launcher)
+            assertEquals("Expected $launcher to be allowed", AccessDecision.ALLOWED, decision)
         }
     }
 

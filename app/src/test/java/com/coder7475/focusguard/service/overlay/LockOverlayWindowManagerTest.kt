@@ -40,14 +40,23 @@ class LockOverlayWindowManagerTest {
     }
 
     @Test
-    fun `attach sets modal flags without FLAG_NOT_TOUCH_MODAL`() {
+    fun `attach initializes view and lifecycle without adding window prematurely`() {
+        overlayWindowManager.attach()
+        assertTrue(overlayWindowManager.isAttached)
+        assertFalse(overlayWindowManager.isVisible)
+        verify(exactly = 0) { mockWindowManager.addView(any(), any()) }
+    }
+
+    @Test
+    fun `showOverlay attaches if needed and adds window with modal flags without FLAG_NOT_TOUCH_MODAL`() {
         val paramsSlot = slot<WindowManager.LayoutParams>()
         every { mockWindowManager.addView(any(), capture(paramsSlot)) } returns Unit
 
-        overlayWindowManager.attach()
+        overlayWindowManager.showOverlay()
 
         assertTrue(overlayWindowManager.isAttached)
-        assertFalse(overlayWindowManager.isVisible)
+        assertTrue(overlayWindowManager.isVisible)
+        verify(exactly = 1) { mockWindowManager.addView(any(), any()) }
 
         val capturedParams = paramsSlot.captured
         val flags = capturedParams.flags
@@ -76,21 +85,27 @@ class LockOverlayWindowManagerTest {
     }
 
     @Test
-    fun `showOverlay attaches if needed and updates visibility`() {
-        overlayWindowManager.attach()
+    fun `hideOverlay dynamically removes window from windowManager`() {
+        every { mockWindowManager.addView(any(), any()) } returns Unit
+        every { mockWindowManager.removeView(any()) } returns Unit
+
         overlayWindowManager.showOverlay()
         assertTrue(overlayWindowManager.isVisible)
 
         overlayWindowManager.hideOverlay()
         assertFalse(overlayWindowManager.isVisible)
+        verify(exactly = 1) { mockWindowManager.removeView(any()) }
     }
 
     @Test
     fun `destroy cleans up views and marks unattached`() {
-        overlayWindowManager.attach()
+        every { mockWindowManager.addView(any(), any()) } returns Unit
+        every { mockWindowManager.removeView(any()) } returns Unit
+
+        overlayWindowManager.showOverlay()
         overlayWindowManager.destroy()
         assertFalse(overlayWindowManager.isAttached)
         assertFalse(overlayWindowManager.isVisible)
-        verify { mockWindowManager.removeView(any()) }
+        verify(atLeast = 1) { mockWindowManager.removeView(any()) }
     }
 }

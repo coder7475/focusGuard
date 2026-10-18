@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -20,6 +21,8 @@ class FocusPreferences(
     companion object {
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val KEY_BATTERY_GUIDE_DISMISSED = booleanPreferencesKey("battery_guide_dismissed")
+        val KEY_SELECTED_DURATION_MINUTES = intPreferencesKey("selected_duration_minutes")
+        const val DEFAULT_DURATION_MINUTES = 25
     }
 
     val isOnboardingCompleted: Flow<Boolean> = dataStore.data
@@ -55,6 +58,24 @@ class FocusPreferences(
     suspend fun setBatteryGuideDismissed(dismissed: Boolean) {
         dataStore.edit { preferences ->
             preferences[KEY_BATTERY_GUIDE_DISMISSED] = dismissed
+        }
+    }
+
+    val selectedDurationMinutes: Flow<Int> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[KEY_SELECTED_DURATION_MINUTES] ?: DEFAULT_DURATION_MINUTES
+        }
+
+    suspend fun setSelectedDurationMinutes(minutes: Int) {
+        dataStore.edit { preferences ->
+            preferences[KEY_SELECTED_DURATION_MINUTES] = minutes
         }
     }
 

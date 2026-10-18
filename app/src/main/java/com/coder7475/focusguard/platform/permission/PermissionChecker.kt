@@ -8,53 +8,75 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
+
+enum class PermissionTier(
+    val title: String,
+    val description: String
+) {
+    CORE_ENFORCERS(
+        "Core Enforcers",
+        "Mandatory services required for foreground detection, exact alarms, and active notification countdowns."
+    ),
+    BACKGROUND_DURABILITY(
+        "Background Durability",
+        "Durability configurations to prevent battery management termination and survive reboots."
+    )
+}
 
 enum class FocusPermission(
     val title: String,
     val description: String,
-    val isMandatory: Boolean
+    val isMandatory: Boolean,
+    val tier: PermissionTier
 ) {
     ACCESSIBILITY(
         "Accessibility Service",
         "Required to detect foreground window transitions and enforce focus locks over blocked apps without inspecting view content.",
-        true
-    ),
-    EXACT_ALARM(
-        "Exact Alarms",
-        "Ensures your focus sessions and scheduled locks conclude precisely on time, even during deep Doze sleep.",
-        true
+        true,
+        PermissionTier.CORE_ENFORCERS
     ),
     NOTIFICATIONS(
         "Notifications",
         "Displays real-time session countdown and high-priority completion alerts.",
-        true
+        true,
+        PermissionTier.CORE_ENFORCERS
+    ),
+    EXACT_ALARM(
+        "Exact Alarms",
+        "Ensures your focus sessions and scheduled locks conclude precisely on time, even during deep Doze sleep.",
+        true,
+        PermissionTier.CORE_ENFORCERS
     ),
     BATTERY_OPTIMIZATION(
         "Unrestricted Battery Usage",
         "Prevents aggressive background process killers from destroying your active session timer.",
-        true
-    ),
-    USAGE_STATS(
-        "Usage Access",
-        "Provides supplemental application package verification for maximum lock reliability.",
-        false
+        true,
+        PermissionTier.BACKGROUND_DURABILITY
     ),
     BOOT_COMPLETED(
         "Run After Reboot",
         "Guarantees that active focus sessions and alarms survive unexpected device reboots.",
-        true
+        true,
+        PermissionTier.BACKGROUND_DURABILITY
+    ),
+    USAGE_STATS(
+        "Usage Access",
+        "Provides supplemental application package verification for maximum lock reliability.",
+        false,
+        PermissionTier.BACKGROUND_DURABILITY
     ),
     FULL_SCREEN_INTENT(
         "Full-Screen Alerts",
         "Allows high-priority completion screens and emergency tamper alarms.",
-        false
+        false,
+        PermissionTier.BACKGROUND_DURABILITY
     )
 }
 
@@ -118,19 +140,11 @@ open class PermissionChecker(private val context: Context) {
 
     open fun hasUsageStatsPermission(): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
-        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                context.packageName
-            )
-        } else {
-            appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                context.packageName
-            )
-        }
+        val mode = appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            context.packageName
+        )
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
@@ -157,6 +171,17 @@ open class PermissionChecker(private val context: Context) {
             .all { isGranted(it) }
     }
 
+    open fun getNextUngrantedMandatoryPermission(): FocusPermission? {
+        val priorityOrder = listOf(
+            FocusPermission.ACCESSIBILITY,
+            FocusPermission.NOTIFICATIONS,
+            FocusPermission.EXACT_ALARM,
+            FocusPermission.BATTERY_OPTIMIZATION,
+            FocusPermission.BOOT_COMPLETED
+        )
+        return priorityOrder.firstOrNull { !isGranted(it) }
+    }
+
     @SuppressLint("BatteryLife")
     fun createIntentForPermission(permission: FocusPermission): Intent {
         return when (permission) {
@@ -166,7 +191,7 @@ open class PermissionChecker(private val context: Context) {
             FocusPermission.EXACT_ALARM -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                        data = Uri.parse("package:${context.packageName}")
+                        data = "package:${context.packageName}".toUri()
                     }
                 } else {
                     Intent(Settings.ACTION_SETTINGS)
@@ -179,13 +204,13 @@ open class PermissionChecker(private val context: Context) {
                     }
                 } else {
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.parse("package:${context.packageName}")
+                        data = "package:${context.packageName}".toUri()
                     }
                 }
             }
             FocusPermission.BATTERY_OPTIMIZATION -> {
                 Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                    data = Uri.parse("package:${context.packageName}")
+                    data = "package:${context.packageName}".toUri()
                 }
             }
             FocusPermission.USAGE_STATS -> {
@@ -193,17 +218,17 @@ open class PermissionChecker(private val context: Context) {
             }
             FocusPermission.BOOT_COMPLETED -> {
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:${context.packageName}")
+                    data = "package:${context.packageName}".toUri()
                 }
             }
             FocusPermission.FULL_SCREEN_INTENT -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
-                        data = Uri.parse("package:${context.packageName}")
+                        data = "package:${context.packageName}".toUri()
                     }
                 } else {
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.parse("package:${context.packageName}")
+                        data = "package:${context.packageName}".toUri()
                     }
                 }
             }

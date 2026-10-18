@@ -1,6 +1,5 @@
 package com.coder7475.focusguard.ui.home
 
-import android.content.Context
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -48,10 +47,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.coder7475.focusguard.data.local.FocusGuardDatabase
+import com.coder7475.focusguard.data.preferences.FocusPreferences
+import com.coder7475.focusguard.data.preferences.focusDataStore
 import com.coder7475.focusguard.data.repository.RoomScheduleRepository
 import com.coder7475.focusguard.data.repository.RoomSessionRepository
 import com.coder7475.focusguard.domain.engine.SessionEngine
-import com.coder7475.focusguard.domain.model.FocusSession
 import com.coder7475.focusguard.domain.model.SessionStatus
 import com.coder7475.focusguard.platform.alarm.AlarmCoordinator
 import com.coder7475.focusguard.service.foreground.FocusGuardService
@@ -63,7 +63,6 @@ import com.coder7475.focusguard.ui.theme.ElectricCyan
 import com.coder7475.focusguard.ui.theme.MatteCharcoal
 import com.coder7475.focusguard.ui.theme.OffWhite
 import com.coder7475.focusguard.ui.theme.SafetyOrange
-import com.coder7475.focusguard.ui.theme.SignalAmber
 import com.coder7475.focusguard.ui.theme.TextMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,12 +86,22 @@ fun HomeScreen(
     val scheduleRepo = remember { RoomScheduleRepository(db.scheduleDao()) }
     val sessionEngine = remember { SessionEngine(sessionRepo) }
     val alarmCoordinator = remember { AlarmCoordinator(context) }
+    val focusPreferences = remember { FocusPreferences(context.focusDataStore) }
 
     val activeSession by sessionRepo.observeActiveSession().collectAsState(initial = null)
     val completedCount by sessionRepo.observeCompletedSessionCount().collectAsState(initial = 0)
+    val persistedDuration by focusPreferences.selectedDurationMinutes.collectAsState(initial = FocusPreferences.DEFAULT_DURATION_MINUTES)
 
     var currentTab by remember { mutableStateOf(HomeTab.DIAL) }
-    var selectedMinutes by remember { mutableIntStateOf(25) }
+    var selectedMinutes by remember { mutableIntStateOf(FocusPreferences.DEFAULT_DURATION_MINUTES) }
+
+    LaunchedEffect(persistedDuration) {
+        selectedMinutes = persistedDuration
+    }
+
+    var showCustomDurationDialog by remember { mutableStateOf(false) }
+    var showDisciplineWarningDialog by remember { mutableStateOf(false) }
+    var pendingCustomMinutes by remember { mutableStateOf<Int?>(null) }
 
     var currentTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -266,7 +275,15 @@ fun HomeScreen(
 
                             RotaryDialTimer(
                                 selectedMinutes = selectedMinutes,
-                                onMinutesChanged = { selectedMinutes = it },
+                                onMinutesChanged = { minutes ->
+                                    selectedMinutes = minutes
+                                    coroutineScope.launch {
+                                        focusPreferences.setSelectedDurationMinutes(minutes)
+                                    }
+                                },
+                                onOpenCustomDialog = {
+                                    showCustomDurationDialog = true
+                                },
                                 isActiveSession = isSessionActive,
                                 remainingMs = remainingMs,
                                 totalDurationMs = totalDurationMs
@@ -352,6 +369,44 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+
+        if (showCustomDurationDialog) {
+            CustomDurationDialog(
+                initialMinutes = selectedMinutes,
+                onDismiss = { showCustomDurationDialog = false },
+                onConfirm = { minutes ->
+                    showCustomDurationDialog = false
+                    if (minutes > 180) {
+                        pendingCustomMinutes = minutes
+                        showDisciplineWarningDialog = true
+                    } else {
+                        selectedMinutes = minutes
+                        coroutineScope.launch {
+                            focusPreferences.setSelectedDurationMinutes(minutes)
+                        }
+                    }
+                }
+            )
+        }
+
+        if (showDisciplineWarningDialog && pendingCustomMinutes != null) {
+            DisciplineWarningDialog(
+                durationMinutes = pendingCustomMinutes ?: 180,
+                onDismiss = {
+                    showDisciplineWarningDialog = false
+                    pendingCustomMinutes = null
+                },
+                onConfirm = {
+                    val confirmedMinutes = pendingCustomMinutes ?: 180
+                    selectedMinutes = confirmedMinutes
+                    showDisciplineWarningDialog = false
+                    pendingCustomMinutes = null
+                    coroutineScope.launch {
+                        focusPreferences.setSelectedDurationMinutes(confirmedMinutes)
+                    }
+                }
+            )
         }
     }
 }

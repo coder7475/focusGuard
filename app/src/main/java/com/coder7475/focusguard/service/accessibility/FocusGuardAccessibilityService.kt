@@ -2,7 +2,6 @@ package com.coder7475.focusguard.service.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.coder7475.focusguard.MainActivity

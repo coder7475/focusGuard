@@ -1,12 +1,12 @@
 package com.coder7475.focusguard.ui.home
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,35 +17,26 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.coder7475.focusguard.ui.theme.BorderDark
@@ -68,13 +59,13 @@ private const val MAX_MINUTES = 120f
 fun RotaryDialTimer(
     selectedMinutes: Int,
     onMinutesChanged: (Int) -> Unit,
+    modifier: Modifier = Modifier,
     isActiveSession: Boolean = false,
     remainingMs: Long = 0L,
     totalDurationMs: Long = 0L,
-    modifier: Modifier = Modifier
+    onOpenCustomDialog: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
-    val view = LocalView.current
 
     // Current angle mapped from selectedMinutes
     val sweepFraction = if (isActiveSession && totalDurationMs > 0) {
@@ -251,12 +242,29 @@ fun RotaryDialTimer(
                         fontFamily = FontFamily.Monospace
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "ROTATE TO SET",
-                        color = TextMuted.copy(alpha = 0.7f),
-                        fontSize = 9.sp,
-                        letterSpacing = 1.sp
-                    )
+                    if (selectedMinutes > MAX_MINUTES.toInt()) {
+                        Box(
+                            modifier = Modifier
+                                .background(SignalAmber.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                .border(1.dp, SignalAmber, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "EXTENDED LOCK",
+                                color = SignalAmber,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "ROTATE TO SET",
+                            color = TextMuted.copy(alpha = 0.7f),
+                            fontSize = 9.sp,
+                            letterSpacing = 1.sp
+                        )
+                    }
                 }
             }
         }
@@ -270,7 +278,8 @@ fun RotaryDialTimer(
                 onSelectMinutes = { minutes ->
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onMinutesChanged(minutes)
-                }
+                },
+                onOpenCustomDialog = onOpenCustomDialog
             )
         }
     }
@@ -280,6 +289,7 @@ fun RotaryDialTimer(
 fun PresetSwitchesRow(
     currentMinutes: Int,
     onSelectMinutes: (Int) -> Unit,
+    onOpenCustomDialog: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val presets = listOf(
@@ -287,14 +297,18 @@ fun PresetSwitchesRow(
         25 to "25M",
         45 to "45M",
         60 to "60M",
-        90 to "90M"
+        120 to "120M"
     )
+    val isCustom = currentMinutes !in presets.map { it.first }
+    val scrollState = rememberScrollState()
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
+            .horizontalScroll(scrollState)
+            .padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         presets.forEach { (mins, label) ->
             val isSelected = currentMinutes == mins
@@ -306,7 +320,7 @@ fun PresetSwitchesRow(
                         text = label,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
+                        fontSize = 11.sp
                     )
                 },
                 colors = FilterChipDefaults.filterChipColors(
@@ -324,5 +338,31 @@ fun PresetSwitchesRow(
                 shape = RoundedCornerShape(8.dp)
             )
         }
+
+        FilterChip(
+            selected = isCustom,
+            onClick = onOpenCustomDialog,
+            label = {
+                Text(
+                    text = if (isCustom) "CUSTOM (${currentMinutes}M)" else "CUSTOM...",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+            },
+            colors = FilterChipDefaults.filterChipColors(
+                containerColor = DarkGunmetal,
+                labelColor = TextMuted,
+                selectedContainerColor = SafetyOrange,
+                selectedLabelColor = MatteCharcoal
+            ),
+            border = FilterChipDefaults.filterChipBorder(
+                enabled = true,
+                selected = isCustom,
+                borderColor = if (isCustom) SafetyOrange else BorderDark,
+                borderWidth = 1.dp
+            ),
+            shape = RoundedCornerShape(8.dp)
+        )
     }
 }

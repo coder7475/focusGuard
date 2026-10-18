@@ -4,9 +4,10 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.util.Log
 import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import com.coder7475.focusguard.ui.theme.FocusGuardTheme
 
 open class LockOverlayWindowManager(
     private val context: Context,
@@ -29,91 +30,103 @@ open class LockOverlayWindowManager(
         endsAtEpochMs = epochMs
     }
 
+    private fun createLayoutParams(): WindowManager.LayoutParams {
+        val flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+
+        return WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            flags,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.FILL
+        }
+    }
+
     @Synchronized
     open fun attach() {
-        if (isAttached) return
+        if (isAttached && overlayView != null) return
 
         try {
-            val flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-
-            val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                flags,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.FILL
-            }
-
             lifecycleOwner.onCreate()
 
             val composeView = ComposeView(context).apply {
+                setViewCompositionStrategy(
+                    ViewCompositionStrategy.DisposeOnLifecycleDestroyed(lifecycleOwner)
+                )
                 lifecycleOwner.attachToDecor(this)
                 setContent {
-                    LockOverlayScreen(
-                        endsAtEpochMsProvider = { endsAtEpochMs },
-                        onEmergencyClick = onEmergencyClick
-                    )
+                    FocusGuardTheme {
+                        LockOverlayScreen(
+                            endsAtEpochMsProvider = { endsAtEpochMs },
+                            onEmergencyClick = onEmergencyClick
+                        )
+                    }
                 }
-                visibility = View.GONE
             }
 
-            windowManager.addView(composeView, params)
             overlayView = composeView
             isAttached = true
-            isVisible = false
-
             lifecycleOwner.onStart()
             lifecycleOwner.onResume()
-            Log.d(TAG, "Lock overlay successfully attached to WindowManager")
+            Log.d(TAG, "Lock overlay view created successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to attach lock overlay window", e)
+            Log.e(TAG, "Failed to initialize lock overlay view", e)
         }
     }
 
     @Synchronized
     open fun showOverlay() {
-        if (!isAttached) {
+        if (!isAttached || overlayView == null) {
             attach()
         }
-        overlayView?.let { view ->
-            if (view.visibility != View.VISIBLE) {
-                view.visibility = View.VISIBLE
+
+        val view = overlayView ?: return
+        if (!isVisible) {
+            try {
+                windowManager.addView(view, createLayoutParams())
                 isVisible = true
-                Log.d(TAG, "Lock overlay shown")
+                Log.d(TAG, "Lock overlay added to WindowManager (VISIBLE)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add overlay view to WindowManager", e)
             }
         }
     }
 
     @Synchronized
     open fun hideOverlay() {
-        overlayView?.let { view ->
-            if (view.visibility != View.GONE) {
-                view.visibility = View.GONE
+        val view = overlayView ?: return
+        if (isVisible) {
+            try {
+                windowManager.removeView(view)
                 isVisible = false
-                Log.d(TAG, "Lock overlay hidden")
+                Log.d(TAG, "Lock overlay removed from WindowManager (HIDDEN)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to remove overlay view from WindowManager", e)
             }
         }
     }
 
     @Synchronized
     open fun destroy() {
-        if (!isAttached) return
+        if (isVisible && overlayView != null) {
+            try {
+                windowManager.removeView(overlayView)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to remove lock overlay view during destroy", e)
+            }
+        }
 
         try {
             lifecycleOwner.onPause()
             lifecycleOwner.onStop()
             lifecycleOwner.onDestroy()
-
-            overlayView?.let {
-                windowManager.removeView(it)
-            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to remove lock overlay view", e)
+            Log.e(TAG, "Failed to clean up lifecycle owner", e)
         } finally {
             overlayView = null
             isAttached = false

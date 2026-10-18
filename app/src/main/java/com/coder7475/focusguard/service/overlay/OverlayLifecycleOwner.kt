@@ -30,6 +30,7 @@ class OverlayLifecycleOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         get() = savedStateRegistryController.savedStateRegistry
 
     fun onCreate(savedInstanceState: Bundle? = null) {
+        savedStateRegistryController.performAttach()
         savedStateRegistryController.performRestore(savedInstanceState)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
     }
