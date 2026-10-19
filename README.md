@@ -37,6 +37,39 @@ Standard app blockers fail when willpower breaks. Most timers and blockers can b
 
 ---
 
+## Building a Signed APK
+
+For personal installation (sideloading on your own device), sign the release build with the debug keystore (already present at `~/.android/debug.keystore`):
+
+1. Add a signing config to `app/build.gradle.kts`:
+```kotlin
+signingConfigs {
+    create("release") {
+        storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+    }
+}
+buildTypes {
+    release {
+        signingConfig = signingConfigs.getByName("release")
+    }
+}
+```
+2. Build:
+```bash
+JAVA_HOME=/home/fahad/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2 ./gradlew assembleRelease
+```
+3. Output: `app/build/outputs/apk/release/app-release.apk`
+4. Install: `adb install app/build/outputs/apk/release/app-release.apk`
+
+For distribution, generate a dedicated keystore instead:
+```bash
+keytool -genkeypair -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias focusguard
+```
+and reference it in the signing config (keep the keystore and passwords out of version control).
+
 ## Tech Stack
 
 | Layer | Technology | Details |
