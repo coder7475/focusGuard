@@ -75,3 +75,8 @@ lint/tmp/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Node / Expo
+node_modules/
+.expo/
+
