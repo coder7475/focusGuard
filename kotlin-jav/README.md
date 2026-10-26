@@ -150,7 +150,7 @@ flowchart TD
 4. **Deploy to Device**: Connect an Android device with USB debugging enabled (or boot an Android Virtual Device), select it in the target device dropdown, and click **Run 'app'** (`Shift+F10`).
 5. **Inspect Local Database**: Navigate to **App Inspection > Database Inspector** to view active Room database tables in real time.
 
-For full step-by-step instructions, see the **[Developer, Testing & Deployment Guide](doc/developer/DEVELOPMENT_TESTING_DEPLOYMENT_GUIDE.md)**.
+For full step-by-step instructions, see the **[Developer Guide](doc/developer/DEVELOPMENT_GUIDE.md)**.
 
 ### Running via Command Line (CLI)
 
@@ -238,8 +238,8 @@ Comprehensive architecture, testing, and deployment documentation is available i
 
 | Document | Purpose |
 | :--- | :--- |
-| **[Developer, Testing & Deployment Guide](doc/developer/DEVELOPMENT_TESTING_DEPLOYMENT_GUIDE.md)** | Complete Android Studio manual for Compose previews, emulator/hardware debugging, ADB commands, and Play Store releases. |
-| **[APK & AAB Build & Release Guide](doc/developer/BUILD_AND_RELEASE_GUIDE.md)** | Keystore generation, secret configuration, version management, and Play Console deployment. |
+| **[Developer Guide](doc/developer/DEVELOPMENT_GUIDE.md)** | Android Studio manual for Compose previews, emulator/hardware debugging, ADB commands, and test running. |
+| **[Build & Release Guide](doc/developer/BUILD_AND_RELEASE_GUIDE.md)** | Keystore generation, APK/AAB compilation, Play Console deployment, and release tracks. |
 | **[Smoke Test Checklist](doc/qa/SMOKE_TEST_CHECKLIST.md)** | Manual verification scenarios (dialer pass-through, deep Doze alarms, reboot survival, tamper detection). |
 | **[Google Play Store Disclosures](doc/play/PLAY_STORE_DISCLOSURES.md)** | Prominent disclosure copy and video submission guidelines for Accessibility and Foreground services. |
 | **[Architecture Decision Records (ADRs)](doc/design/adrs/)** | Documented technical decisions for overlays, Compose in window managers, and exact alarms. |

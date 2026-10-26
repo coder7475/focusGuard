@@ -118,4 +118,4 @@ When writing or reviewing code in FocusGuard, uphold the following architectural
 
 ## Questions and Support
 
-For questions, architectural discussions, or bug reports, feel free to open a [GitHub Issue](https://github.com/coder7475/focusGuard/issues) or consult the [Developer Guide](doc/developer/DEVELOPMENT_TESTING_DEPLOYMENT_GUIDE.md).
+For questions, architectural discussions, or bug reports, feel free to open a [GitHub Issue](https://github.com/coder7475/focusGuard/issues) or consult the [Developer Guide](doc/developer/DEVELOPMENT_GUIDE.md).
