@@ -37,7 +37,13 @@ Each step includes:
 10. [Step 9: Building the Schedules & Routines Screen](#step-9-building-the-schedules--routines-screen)
 11. [Step 10: Building the 7-Step Onboarding & Diagnostics Wizard](#step-10-building-the-7-step-onboarding--diagnostics-wizard)
 12. [Step 11: Building the OEM Battery Optimization Guide](#step-11-building-the-oem-battery-optimization-guide)
-13. [Step 12: Assembling the Main Screen & Navigation](#step-12-assembling-the-main-screen--navigation)
+13. [Step 12: Assembling Navigation & App Layout (Expo Router SDK 58)](#step-12-assembling-navigation--app-layout-expo-router-sdk-58)
+    - [Step 12.1: Building the Reusable Native Button Component (`src/components/button.tsx`)](#step-121-building-the-reusable-native-button-component-srccomponentsbuttontsx)
+    - [Step 12.2: The Root Stack Navigator (`src/app/_layout.tsx`)](#step-122-the-root-stack-navigator-srcapp_layouttsx)
+    - [Step 12.3: The Platform-Native Tab Bar Layout (`src/app/(tabs)/_layout.tsx`)](#step-123-the-platform-native-tab-bar-layout-srcapptabs_layouttsx)
+    - [Step 12.4: The 404 Fallback Route (`src/app/+not-found.tsx`)](#step-124-the-404-fallback-route-srcappnot-foundtsx)
+    - [Step 12.5: The Focus Dashboard Screen (`src/app/(tabs)/index.tsx`)](#step-125-the-focus-dashboard-screen-srcapptabsindextsx)
+    - [Step 12.6: The Supporting Tab Screens (`about.tsx` & `explore.tsx`)](#step-126-the-supporting-tab-screens-abouttsx--exploretsx)
 14. [Step 13: End-to-End Testing & Verification with ADB](#step-13-end-to-end-testing--verification-with-adb)
 
 ---
@@ -914,7 +920,9 @@ export class ScheduleEngine {
 ## Step 7: Building the Theme & Color Tokens
 
 ### 🎯 The Goal
-Replicate FocusGuard's industrial cyberpunk aesthetic with dark gunmetal, safety orange, and electric cyan.
+Replicate FocusGuard's industrial cyberpunk aesthetic with dark gunmetal, safety orange, and electric cyan. In this codebase:
+- `src/constants/theme.ts` provides the foundational dark/light mode palette, responsive `Spacing` scale, `Fonts`, and `BottomTabInset` metrics.
+- `src/constants/colors.ts` defines the high-visibility focus enforcement accent tokens used by the Rotary dial, timer chips, and active lock states.
 
 ### 📁 File: `src/constants/colors.ts`
 
@@ -933,6 +941,9 @@ export const Colors = {
   successGreen: '#00E676',
 };
 ```
+
+> **Note on App Theming:**  
+> When building UI components in `src/app`, leverage `ThemedView` and `ThemedText` along with `Colors` from `@/constants/theme` for system dark/light switching, and import `Colors as BrandColors` from `@/constants/colors` for focus state accents.
 
 ---
 
@@ -1314,18 +1325,496 @@ const styles = StyleSheet.create({
 
 ---
 
-## Step 12: Assembling the Main Screen & Navigation
+## Step 12: Assembling Navigation & App Layout (Expo Router SDK 58)
 
 ### 🎯 The Goal
-Wire the Rotary Dial, quick preset buttons (15m, 45m, 60m), and the native focus lock trigger together on the dashboard.
+Structure the complete Expo Router file-based navigation tree. In Expo SDK 58, route navigation is driven strictly by files and directories under `src/app`:
+- Every file in `src/app` represents a screen or layout.
+- Non-route components, engines, and tokens live outside `src/app` (e.g. in `src/components`, `src/constants`, `src/services`).
+- The root layout establishes the top-level `Stack` (managing modals, full-screen overlays, and fallback routes).
+- Group folders with parentheses `(tabs)` define the bottom tab navigator without affecting the URL route path.
 
-### 📁 File: `src/app/(tabs)/index.tsx`
+```
+src/app/
+├── _layout.tsx           # Root Stack Layout (ThemeProvider, AnimatedSplash, StatusBar)
+├── +not-found.tsx        # 404 Fallback Screen
+├── onboarding.tsx        # Diagnostic & Permission Wizard (Modal)
+└── (tabs)/               # Bottom Tab Navigator Route Group
+    ├── _layout.tsx       # Tab Bar Configuration (Tabs + SymbolView Icons)
+    ├── index.tsx         # Focus Timer & Dashboard Screen
+    ├── schedules.tsx     # Bedtime Routines & Schedule Manager
+    ├── explore.tsx       # App Features & Documentation Explorer
+    └── about.tsx         # About Screen & App Info
+```
+
+---
+
+### Step 12.1: Building the Reusable Native Button Component (`src/components/button.tsx`)
+
+#### 🎯 The Goal
+Following the official [Expo Tutorial: Build a screen](https://docs.expo.dev/tutorial/build-a-screen/), create an interactive, reusable button component. To achieve platform-native excellence:
+- **Android**: Uses `android_ripple` with foreground clipping and Material surface elevation.
+- **iOS**: Uses micro-scaling, smooth opacity, and light tactile haptic pulses via `expo-haptics`.
+- **Dynamic Theming**: Adapts to light/dark themes and provides `primary`, `secondary`, `outline`, and `danger` variants with icon support (`SymbolView` from `expo-symbols`).
+
+#### 📁 File: `src/components/button.tsx`
+
+```typescript
+import React from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+
+import { ThemedText } from './themed-text';
+import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+
+export type ButtonTheme = 'primary' | 'secondary' | 'outline' | 'danger';
+export type ButtonSymbolName = SymbolViewProps['name'];
+
+export interface ButtonProps {
+  label: string;
+  theme?: ButtonTheme;
+  icon?: ButtonSymbolName;
+  onPress?: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+}
+
+export default function Button({
+  label,
+  theme = 'secondary',
+  icon,
+  onPress,
+  disabled = false,
+  loading = false,
+  style,
+  testID,
+}: ButtonProps) {
+  const currentTheme = useTheme();
+
+  const handlePress = () => {
+    if (disabled || loading) return;
+
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+
+    onPress?.();
+  };
+
+  const isPrimary = theme === 'primary';
+  const isDanger = theme === 'danger';
+  const isOutline = theme === 'outline';
+
+  let backgroundColor: string;
+  let textColor: string;
+  let borderColor: string | undefined;
+
+  if (isPrimary) {
+    backgroundColor = '#208AEF';
+    textColor = '#ffffff';
+  } else if (isDanger) {
+    backgroundColor = '#E53935';
+    textColor = '#ffffff';
+  } else if (isOutline) {
+    backgroundColor = 'transparent';
+    textColor = currentTheme.text;
+    borderColor = currentTheme.backgroundSelected;
+  } else {
+    backgroundColor = currentTheme.backgroundElement;
+    textColor = currentTheme.text;
+  }
+
+  const rippleColor = isPrimary || isDanger
+    ? 'rgba(255, 255, 255, 0.25)'
+    : 'rgba(0, 0, 0, 0.12)';
+
+  return (
+    <View style={[styles.outerContainer, style]}>
+      <Pressable
+        testID={testID}
+        disabled={disabled || loading}
+        onPress={handlePress}
+        android_ripple={{
+          color: rippleColor,
+          foreground: true,
+        }}
+        style={({ pressed }) => [
+          styles.button,
+          {
+            backgroundColor,
+            borderColor,
+            borderWidth: borderColor ? 1.5 : 0,
+          },
+          Platform.OS === 'ios' && pressed && styles.pressedIOS,
+          disabled && styles.disabled,
+          isPrimary && styles.primaryShadow,
+        ]}>
+        {loading ? (
+          <ActivityIndicator color={textColor} size="small" />
+        ) : (
+          <View style={styles.contentRow}>
+            {icon && (
+              <SymbolView
+                name={icon as any}
+                tintColor={textColor}
+                size={18}
+                style={styles.icon}
+              />
+            )}
+            <ThemedText
+              type="default"
+              style={[styles.label, { color: textColor }]}>
+              {label}
+            </ThemedText>
+          </View>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  outerContainer: {
+    width: '100%',
+    marginVertical: Spacing.one,
+    borderRadius: 14,
+    overflow: Platform.select({ android: 'hidden', default: 'visible' }),
+  },
+  button: {
+    width: '100%',
+    minHeight: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    ...Platform.select({
+      android: {
+        elevation: 2,
+      },
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
+        shadowRadius: 4,
+      },
+    }),
+  },
+  primaryShadow: {
+    ...Platform.select({
+      android: {
+        elevation: 4,
+      },
+      ios: {
+        shadowColor: '#208AEF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+    }),
+  },
+  pressedIOS: {
+    opacity: 0.82,
+    transform: [{ scale: 0.985 }],
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+  },
+  icon: {
+    marginRight: Spacing.one,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+});
+```
+
+---
+
+### Step 12.2: The Root Stack Navigator (`src/app/_layout.tsx`)
+
+#### 🎯 The Goal
+Initialize app-level theming, prevent splash screen flicker with `AnimatedSplashOverlay`, and configure the root `Stack` that hosts `(tabs)`, `+not-found`, and `onboarding`.
+
+#### 📁 File: `src/app/_layout.tsx`
+
+```typescript
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+
+import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+
+SplashScreen.preventAutoHideAsync();
+
+export default function RootLayout() {
+  const colorScheme = useColorScheme();
+
+  return (
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <AnimatedSplashOverlay />
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="+not-found" options={{ title: 'Oops!' }} />
+        <Stack.Screen
+          name="onboarding"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
+      </Stack>
+      <StatusBar style="auto" />
+    </ThemeProvider>
+  );
+}
+```
+
+---
+
+### Step 12.3: The Platform-Native Tab Bar Layout (`src/app/(tabs)/_layout.tsx`)
+
+#### 🎯 The Goal
+Configure bottom navigation tabs with native feel on both platforms:
+- **Android**: Material 3 elevation (`elevation: 8`), borderless touch ripple, and Material icons (`home`, `explore`, `info`).
+- **iOS**: Frosted shadow line, safe-area bottom insets, active icon variations, and SF Symbols (`house.fill`, `paperplane.fill`, `info.circle.fill`).
+- **Tactile Feedback**: Intercepts tab taps with `Haptics.selectionAsync()` for native response.
+
+#### 📁 File: `src/app/(tabs)/_layout.tsx`
+
+```typescript
+import { Tabs } from 'expo-router';
+import React from 'react';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  type GestureResponderEvent,
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { SymbolView } from 'expo-symbols';
+
+import { Colors, Spacing } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+
+function NativeTabBarButton(props: any) {
+  const handlePress = (e: GestureResponderEvent) => {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      Haptics.selectionAsync();
+    }
+    props.onPress?.(e);
+  };
+
+  return (
+    <Pressable
+      {...props}
+      onPress={handlePress}
+      android_ripple={{
+        color: 'rgba(255, 255, 255, 0.12)',
+        borderless: true,
+      }}
+      style={({ pressed }) => [
+        props.style,
+        Platform.OS === 'ios' && pressed && styles.tabPressedIOS,
+      ]}
+    />
+  );
+}
+
+export default function TabLayout() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const colors = Colors[isDark ? 'dark' : 'light'];
+
+  return (
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: colors.text,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarButton: (props) => <NativeTabBarButton {...props} />,
+        tabBarStyle: {
+          backgroundColor: colors.background,
+          borderTopColor: colors.backgroundElement,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          ...Platform.select({
+            android: {
+              height: 64,
+              paddingBottom: Spacing.two,
+              paddingTop: Spacing.one,
+              elevation: 8,
+            },
+            ios: {
+              height: 84,
+              paddingBottom: Spacing.four,
+              paddingTop: Spacing.one,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: -2 },
+              shadowOpacity: isDark ? 0.3 : 0.06,
+              shadowRadius: 4,
+            },
+            web: {
+              height: 60,
+              paddingBottom: Spacing.one,
+              paddingTop: Spacing.one,
+            },
+          }),
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+          marginTop: Platform.OS === 'android' ? 2 : 0,
+        },
+        headerStyle: {
+          backgroundColor: colors.background,
+        },
+        headerTintColor: colors.text,
+        headerShown: false,
+      }}>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, focused }) => (
+            <SymbolView
+              tintColor={color}
+              name={{
+                ios: focused ? 'house.fill' : 'house',
+                android: 'home',
+                web: 'home',
+              }}
+              size={Platform.OS === 'ios' ? 22 : 24}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: 'Explore',
+          tabBarIcon: ({ color, focused }) => (
+            <SymbolView
+              tintColor={color}
+              name={{
+                ios: focused ? 'paperplane.fill' : 'paperplane',
+                android: 'explore',
+                web: 'explore',
+              }}
+              size={Platform.OS === 'ios' ? 22 : 24}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="about"
+        options={{
+          title: 'About',
+          tabBarIcon: ({ color, focused }) => (
+            <SymbolView
+              tintColor={color}
+              name={{
+                ios: focused ? 'info.circle.fill' : 'info.circle',
+                android: 'info',
+                web: 'info',
+              }}
+              size={Platform.OS === 'ios' ? 22 : 24}
+            />
+          ),
+        }}
+      />
+    </Tabs>
+  );
+}
+
+const styles = StyleSheet.create({
+  tabPressedIOS: {
+    opacity: 0.7,
+    transform: [{ scale: 0.94 }],
+  },
+});
+```
+
+---
+
+### Step 12.4: The 404 Fallback Route (`src/app/+not-found.tsx`)
+
+#### 🎯 The Goal
+Provide an accessible, themed recovery screen when navigating to an undefined route.
+
+#### 📁 File: `src/app/+not-found.tsx`
+
+```typescript
+import { Link, Stack } from 'expo-router';
+import { StyleSheet } from 'react-native';
+
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { Spacing } from '@/constants/theme';
+
+export default function NotFoundScreen() {
+  return (
+    <>
+      <Stack.Screen options={{ title: 'Oops! Not Found' }} />
+      <ThemedView style={styles.container}>
+        <ThemedText type="title">This screen does not exist.</ThemedText>
+        <Link href="/" style={styles.link}>
+          <ThemedText type="link">Go to home screen</ThemedText>
+        </Link>
+      </ThemedView>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
+  link: {
+    marginTop: Spacing.two,
+  },
+});
+```
+
+---
+
+### Step 12.5: The Focus Dashboard Screen (`src/app/(tabs)/index.tsx`)
+
+#### 🎯 The Goal
+Wire the Rotary Dial, quick preset chips (15m, 45m, 60m), and the native focus lock trigger together on the primary tab screen.
+
+#### 📁 File: `src/app/(tabs)/index.tsx`
 
 ```typescript
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { RotaryDial } from '@/components/timer/RotaryDial';
-import { Colors } from '@/constants/colors';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Colors as BrandColors } from '@/constants/colors';
 import FocusEnforcer from '@/../modules/focus-enforcer/src';
 import { openAppDatabase } from '@/data/db/database';
 
@@ -1362,52 +1851,155 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>SLEEPGUARD</Text>
-      <Text style={styles.timerDisplay}>{selectedMinutes} MIN</Text>
+    <ThemedView style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
+        <ThemedText type="subtitle" style={styles.title}>
+          SLEEPGUARD FOCUS
+        </ThemedText>
+        <ThemedText type="title" style={styles.timerDisplay}>
+          {selectedMinutes} MIN
+        </ThemedText>
 
-      <RotaryDial value={selectedMinutes} onChange={setSelectedMinutes} />
+        <RotaryDial value={selectedMinutes} onChange={setSelectedMinutes} />
 
-      {/* Preset Chips */}
-      <View style={styles.chipRow}>
-        {[15, 45, 60].map((preset) => (
-          <TouchableOpacity
-            key={preset}
-            style={[styles.chip, selectedMinutes === preset && styles.chipActive]}
-            onPress={() => setSelectedMinutes(preset)}
-          >
-            <Text style={styles.chipText}>{preset}M</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+        {/* Preset Chips */}
+        <View style={styles.chipRow}>
+          {[15, 45, 60].map((preset) => (
+            <TouchableOpacity
+              key={preset}
+              style={[styles.chip, selectedMinutes === preset && styles.chipActive]}
+              onPress={() => setSelectedMinutes(preset)}
+            >
+              <ThemedText
+                type="smallBold"
+                style={[styles.chipText, selectedMinutes === preset && styles.chipTextActive]}
+              >
+                {preset}M
+              </ThemedText>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* Action Button */}
-      <TouchableOpacity
-        style={[styles.mainButton, isActive ? styles.abortButton : styles.startButton]}
-        onPress={isActive ? stopSession : startSession}
-      >
-        <Text style={styles.mainButtonText}>
-          {isActive ? 'ABORT SESSION' : `ENGAGE FOCUS LOCK (${selectedMinutes}M)`}
-        </Text>
-      </TouchableOpacity>
-    </View>
+        {/* Action Button */}
+        <TouchableOpacity
+          style={[styles.mainButton, isActive ? styles.abortButton : styles.startButton]}
+          onPress={isActive ? stopSession : startSession}
+        >
+          <ThemedText type="defaultSemiBold" style={styles.mainButtonText}>
+            {isActive ? 'ABORT SESSION' : `ENGAGE FOCUS LOCK (${selectedMinutes}M)`}
+          </ThemedText>
+        </TouchableOpacity>
+      </SafeAreaView>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.matteCharcoal, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  title: { fontSize: 20, fontWeight: 'bold', color: Colors.textMuted, letterSpacing: 2 },
-  timerDisplay: { fontSize: 44, fontWeight: 'black', color: Colors.offWhite, marginVertical: 16 },
-  chipRow: { flexDirection: 'row', gap: 12, marginVertical: 24 },
-  chip: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 20, backgroundColor: Colors.darkGunmetal },
-  chipActive: { backgroundColor: Colors.safetyOrange },
-  chipText: { color: Colors.offWhite, fontWeight: 'bold' },
-  mainButton: { width: '100%', height: 54, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  startButton: { backgroundColor: Colors.safetyOrange },
-  abortButton: { backgroundColor: Colors.dangerRed },
-  mainButtonText: { color: Colors.matteCharcoal, fontWeight: 'bold', fontSize: 16, letterSpacing: 1 }
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  safeArea: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    paddingHorizontal: Spacing.four,
+    paddingBottom: BottomTabInset + Spacing.three,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    letterSpacing: 2,
+    marginBottom: Spacing.two,
+  },
+  timerDisplay: {
+    fontSize: 44,
+    marginBottom: Spacing.three,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginVertical: Spacing.three,
+  },
+  chip: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
+    backgroundColor: BrandColors.darkGunmetal,
+  },
+  chipActive: {
+    backgroundColor: BrandColors.safetyOrange,
+  },
+  chipText: {
+    color: BrandColors.offWhite,
+  },
+  chipTextActive: {
+    color: BrandColors.matteCharcoal,
+  },
+  mainButton: {
+    width: '100%',
+    height: 54,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Spacing.two,
+  },
+  startButton: {
+    backgroundColor: BrandColors.safetyOrange,
+  },
+  abortButton: {
+    backgroundColor: BrandColors.dangerRed,
+  },
+  mainButtonText: {
+    color: BrandColors.matteCharcoal,
+    letterSpacing: 1,
+  },
 });
 ```
+
+---
+
+### Step 12.6: The Supporting Tab Screens (`about.tsx` & `explore.tsx`)
+
+#### 🎯 The Goal
+Maintain consistent layout tokens and dark/light mode responsiveness across all tab routes.
+
+#### 📁 File: `src/app/(tabs)/about.tsx`
+
+```typescript
+import { StyleSheet } from 'react-native';
+
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { Spacing } from '@/constants/theme';
+
+export default function AboutScreen() {
+  return (
+    <ThemedView style={styles.container}>
+      <ThemedText type="title">About</ThemedText>
+      <ThemedText themeColor="textSecondary" style={styles.description}>
+        SleepGuard Focus and Sleep Management
+      </ThemedText>
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.four,
+    gap: Spacing.two,
+  },
+  description: {
+    textAlign: 'center',
+  },
+});
+```
+
+✅ **Verification:** Run `npx tsc --noEmit` and `npx expo start`. All tabs (Home, Schedules, Explore, About) navigate smoothly with zero type errors and adapt dynamically to system dark and light color themes.
 
 ---
 

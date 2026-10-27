@@ -1,8 +1,9 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import Button from '@/components/button';
 import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -59,14 +60,50 @@ export default function TabTwoScreen() {
         </ThemedView>
 
         <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
+          <Collapsible title="Native Buttons & Haptics (Android & iOS)">
             <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
+              These buttons implement platform-native feedback (Android Material ripple and elevation, iOS micro-scale, opacity, and light tactile haptics via <ThemedText type="code">expo-haptics</ThemedText>):
+            </ThemedText>
+            <View style={styles.buttonShowcase}>
+              <Button
+                theme="primary"
+                label="Primary Button (Haptics)"
+                icon={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
+                onPress={() => {}}
+              />
+              <Button
+                theme="secondary"
+                label="Secondary Button"
+                icon={{ ios: 'gearshape.fill', android: 'settings', web: 'settings' }}
+                onPress={() => {}}
+              />
+              <Button
+                theme="outline"
+                label="Outline Button"
+                icon={{ ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }}
+                onPress={() => {}}
+              />
+              <Button
+                theme="danger"
+                label="Danger Button"
+                icon={{ ios: 'exclamationmark.triangle.fill', android: 'warning', web: 'warning' }}
+                onPress={() => {}}
+              />
+            </View>
+          </Collapsible>
+
+          <Collapsible title="File-based routing & Tabs">
+            <ThemedText type="small">
+              The app structure uses Expo Router v4:
             </ThemedText>
             <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
+              • Root Stack: <ThemedText type="code">src/app/_layout.tsx</ThemedText>
+            </ThemedText>
+            <ThemedText type="small">
+              • Tabs Navigator: <ThemedText type="code">src/app/(tabs)/_layout.tsx</ThemedText>
+            </ThemedText>
+            <ThemedText type="small">
+              • Tabs: <ThemedText type="code">index.tsx</ThemedText>, <ThemedText type="code">explore.tsx</ThemedText>, and <ThemedText type="code">about.tsx</ThemedText>
             </ThemedText>
             <ExternalLink href="https://docs.expo.dev/router/introduction">
               <ThemedText type="linkPrimary">Learn more</ThemedText>
@@ -162,6 +199,11 @@ const styles = StyleSheet.create({
     gap: Spacing.five,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
+  },
+  buttonShowcase: {
+    width: '100%',
+    paddingVertical: Spacing.two,
+    gap: Spacing.one,
   },
   collapsibleContent: {
     alignItems: 'center',
