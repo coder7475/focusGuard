@@ -1,11 +1,19 @@
 # FocusGuard — Technical Architecture & Design Documentation
 
-This directory contains the system architecture designs, domain specifications, and Architecture Decision Records (ADRs) for FocusGuard.
+This directory contains the core system architecture designs, domain specifications, and Architecture Decision Records (ADRs) for FocusGuard.
+
+> [!NOTE]
+> These architectural foundations directly power both the archived native Kotlin reference implementation and the active React Native / Expo application (`focusGuard`).
+
+---
 
 ## Core Documents
 
 - **[System Architecture Document](SYSTEM_ARCHITECTURE.md)**: Complete system design, bounded contexts, C4 models (Context, Container, Component), subsystem specifications, failure modes ("What happens when X fails?"), persistence schemas, and testing strategy.
 - **[MVP Plan & Product Requirements](../mvp/MVP_PLAN.md)**: Foundational product requirements, user stories, milestone delivery, and research references.
+- **[BlockIt UI & Timer Implementation Plan](BLOCKIT_IMPLEMENTATION_PLAN.md)**: UI specifications for the tactile rotary dial timer, time pickers, and active session cards.
+
+---
 
 ## Architecture Decision Records (ADRs)
 
