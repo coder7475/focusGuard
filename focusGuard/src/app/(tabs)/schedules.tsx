@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
 import { FocusSchedule } from '../../domain/types';
 import { scheduleRepository } from '../../data/repositories/ScheduleRepository';
@@ -25,6 +26,7 @@ const DAYS = [
 ];
 
 export default function SchedulesScreen() {
+  const insets = useSafeAreaInsets();
   const [schedules, setSchedules] = useState<FocusSchedule[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
@@ -109,7 +111,7 @@ export default function SchedulesScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top + 16, 44) }]}>
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.header}>BEDTIME & FOCUS ROUTINES</Text>

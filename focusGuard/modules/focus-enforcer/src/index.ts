@@ -1,6 +1,6 @@
 import { requireNativeModule } from 'expo';
 
-export type PermissionType = 'ACCESSIBILITY' | 'EXACT_ALARM' | 'BATTERY' | 'OVERLAY';
+export type PermissionType = 'ACCESSIBILITY' | 'EXACT_ALARM' | 'BATTERY' | 'OVERLAY' | 'APP_DETAILS';
 
 export interface FocusEnforcerNative {
   startFocusLock(endsAtEpochMs: number): boolean;

@@ -209,9 +209,16 @@ Because FocusGuard enforces strict discipline locks, verify the following critic
 
 ### Test 1: Permission Flow Verification
 - [ ] **Accessibility Service**: Verify the app requests and navigates the user to enable `SleepGuard Focus Service`.
+- [ ] **Android 13+ Restricted Settings Guidance**: On Android 13+ devices running sideloaded APKs, verify the restricted setting warning card appears if accessibility is not granted, offering a direct shortcut to App Info to unlock restricted settings.
 - [ ] **Overlay Permission (`SYSTEM_ALERT_WINDOW`)**: Verify prompt to enable "Display over other apps".
 - [ ] **Exact Alarms (`SCHEDULE_EXACT_ALARM`)**: Verify permission for exact timing across Android 14+.
 - [ ] **Ignore Battery Optimization**: Ensure the app prompts to exempt itself from aggressive OEM battery killers.
+
+> [!TIP]
+> **Android 13+ ADB Bypass Shortcut:** For automated testing pipelines or emulator environments, you can instantly allow restricted settings via ADB:
+> ```bash
+> adb shell appops set com.coder7575.SleepGuard ACCESS_RESTRICTED_SETTINGS allow
+> ```
 
 ### Test 2: Active Session Blocking
 - [ ] Start a 5-minute Focus Session.

@@ -5,7 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import FocusEnforcer from '../modules/FocusEnforcer';
 import { Colors } from '../constants/colors';
@@ -13,11 +15,18 @@ import { preferenceStorage } from '../data/storage/PreferenceStorage';
 import { OemBatteryGuideModal } from '../components/OemBatteryGuideModal';
 
 export default function OnboardingScreen() {
+  const insets = useSafeAreaInsets();
   const [a11yGranted, setA11yGranted] = useState(false);
   const [overlayGranted, setOverlayGranted] = useState(false);
   const [alarmGranted, setAlarmGranted] = useState(false);
   const [batteryGranted, setBatteryGranted] = useState(false);
   const [oemModalVisible, setOemModalVisible] = useState(false);
+
+  const isAndroid13Plus =
+    Platform.OS === 'android' &&
+    (typeof Platform.Version === 'number'
+      ? Platform.Version >= 33
+      : parseInt(String(Platform.Version), 10) >= 33);
 
   const checkPermissions = () => {
     try {
@@ -52,7 +61,16 @@ export default function OnboardingScreen() {
   const coreReady = a11yGranted && alarmGranted;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: Math.max(insets.top + 16, 44),
+          paddingBottom: insets.bottom + 32,
+        },
+      ]}
+    >
       <Text style={styles.title}>SYSTEM DIAGNOSTICS & ONBOARDING</Text>
       <Text style={styles.subtitle}>
         FocusGuard operates as an uncompromising hardware lock. Grant permissions below to establish OS-level focus protection.
@@ -75,6 +93,25 @@ export default function OnboardingScreen() {
         >
           <Text style={styles.actionButtonText}>CONFIGURE ACCESSIBILITY</Text>
         </TouchableOpacity>
+
+        {isAndroid13Plus && !a11yGranted && (
+          <View style={styles.restrictedNotice}>
+            <Text style={styles.restrictedTitle}>⚠️ Android 13+ Restricted Setting Notice</Text>
+            <Text style={styles.restrictedText}>
+              If the Accessibility toggle is grayed out (&quot;Restricted setting&quot;):
+              {'\n'}1. Tap &apos;OPEN APP INFO&apos; below.
+              {'\n'}2. Tap the ⋮ (three dots menu) in the top-right corner.
+              {'\n'}3. Tap &apos;Allow restricted settings&apos; & confirm with device PIN/biometrics.
+              {'\n'}4. Return here and tap &apos;CONFIGURE ACCESSIBILITY&apos;.
+            </Text>
+            <TouchableOpacity
+              style={styles.restrictedButton}
+              onPress={() => FocusEnforcer.openSettingsForPermission('APP_DETAILS')}
+            >
+              <Text style={styles.restrictedButtonText}>OPEN APP INFO (ALLOW RESTRICTED)</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* 2. Display Over Other Apps */}
@@ -264,6 +301,38 @@ const styles = StyleSheet.create({
   continueText: {
     color: Colors.matteCharcoal,
     fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  restrictedNotice: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: 'rgba(255, 87, 34, 0.1)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 87, 34, 0.3)',
+  },
+  restrictedTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.safetyOrange,
+    marginBottom: 6,
+  },
+  restrictedText: {
+    fontSize: 11,
+    color: Colors.offWhite,
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+  restrictedButton: {
+    backgroundColor: Colors.safetyOrange,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  restrictedButtonText: {
+    color: Colors.matteCharcoal,
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
