@@ -10,6 +10,8 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
+> 💡 **Looking for the React Native / Expo application?** Check out the sibling [`focusGuard/`](../focusGuard/README.md) project featuring Expo SDK 58, Continuous Native Generation, and shared domain architecture.
+
 ---
 
 ## Why FocusGuard Exists
@@ -144,9 +146,9 @@ flowchart TD
 
 ### Running via Android Studio
 
-1. Open Android Studio and select **File > Open**, then choose the `focusGuard` root directory.
+1. Open Android Studio and select **File > Open**, then choose the `kotlin-jav` directory.
 2. Click **Sync Project with Gradle Files** (elephant icon) on the top toolbar.
-3. **Live UI Previews**: Open [`HomeScreen.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/main/java/com/coder7475/focusguard/ui/home/HomeScreen.kt) and click **Split** to interact with Compose previews directly.
+3. **Live UI Previews**: Open [`app/src/main/java/com/coder7475/focusguard/ui/home/HomeScreen.kt`](app/src/main/java/com/coder7475/focusguard/ui/home/HomeScreen.kt) and click **Split** to interact with Compose previews directly.
 4. **Deploy to Device**: Connect an Android device with USB debugging enabled (or boot an Android Virtual Device), select it in the target device dropdown, and click **Run 'app'** (`Shift+F10`).
 5. **Inspect Local Database**: Navigate to **App Inspection > Database Inspector** to view active Room database tables in real time.
 
@@ -157,9 +159,8 @@ For full step-by-step instructions, see the **[Developer Guide](doc/developer/DE
 You can build, test, and package FocusGuard without opening Android Studio:
 
 ```bash
-# Clone the repository
-git clone https://github.com/coder7475/focusGuard.git
-cd focusGuard
+# Navigate to the native Android directory
+cd kotlin-jav
 
 # Run unit tests across all layers
 ./gradlew testDebugUnitTest
@@ -185,14 +186,14 @@ FocusGuard maintains automated unit test coverage across all critical business l
 
 | Test Suite | Coverage Area |
 | :--- | :--- |
-| [`SessionEngineTest`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/test/java/com/coder7475/focusguard/domain/engine/SessionEngineTest.kt) | Epoch duration calculations, state transitions, remaining time |
-| [`ScheduleEngineTest`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/test/java/com/coder7475/focusguard/domain/engine/ScheduleEngineTest.kt) | Midnight-crossing schedule intervals, day-of-week recurrence |
-| [`AllowlistPolicyTest`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/test/java/com/coder7475/focusguard/domain/policy/AllowlistPolicyTest.kt) | Emergency dialer, SMS role matching, system package validation |
-| [`AlarmCoordinatorTest`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/test/java/com/coder7475/focusguard/platform/alarm/AlarmCoordinatorTest.kt) | Exact alarm triggering, cancellation, and deep Doze wakeups |
-| [`RoomDaoTest`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/test/java/com/coder7475/focusguard/data/local/RoomDaoTest.kt) | Room database transactions, session CRUD, and schedule queries |
-| [`FocusPreferencesTest`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/test/java/com/coder7475/focusguard/data/preferences/FocusPreferencesTest.kt) | DataStore preference serialization and reactive flow state |
-| [`BootCompletedReceiverTest`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/test/java/com/coder7475/focusguard/platform/receiver/BootCompletedReceiverTest.kt) | Post-reboot alarm and lock reconciliation |
-| [`OverlayLifecycleOwnerTest`](file:///home/fahad/AndroidStudioProjects/focusGuard/app/src/test/java/com/coder7475/focusguard/service/overlay/OverlayLifecycleOwnerTest.kt) | ViewTree lifecycle owner attachment in standalone WindowManager |
+| [`SessionEngineTest`](app/src/test/java/com/coder7475/focusguard/domain/engine/SessionEngineTest.kt) | Epoch duration calculations, state transitions, remaining time |
+| [`ScheduleEngineTest`](app/src/test/java/com/coder7475/focusguard/domain/engine/ScheduleEngineTest.kt) | Midnight-crossing schedule intervals, day-of-week recurrence |
+| [`AllowlistPolicyTest`](app/src/test/java/com/coder7475/focusguard/domain/policy/AllowlistPolicyTest.kt) | Emergency dialer, SMS role matching, system package validation |
+| [`AlarmCoordinatorTest`](app/src/test/java/com/coder7475/focusguard/platform/alarm/AlarmCoordinatorTest.kt) | Exact alarm triggering, cancellation, and deep Doze wakeups |
+| [`RoomDaoTest`](app/src/test/java/com/coder7475/focusguard/data/local/RoomDaoTest.kt) | Room database transactions, session CRUD, and schedule queries |
+| [`FocusPreferencesTest`](app/src/test/java/com/coder7475/focusguard/data/preferences/FocusPreferencesTest.kt) | DataStore preference serialization and reactive flow state |
+| [`BootCompletedReceiverTest`](app/src/test/java/com/coder7475/focusguard/platform/receiver/BootCompletedReceiverTest.kt) | Post-reboot alarm and lock reconciliation |
+| [`OverlayLifecycleOwnerTest`](app/src/test/java/com/coder7475/focusguard/service/overlay/OverlayLifecycleOwnerTest.kt) | ViewTree lifecycle owner attachment in standalone WindowManager |
 
 Run all tests locally with:
 ```bash

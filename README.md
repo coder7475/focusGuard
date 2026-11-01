@@ -1,82 +1,90 @@
-# FocusGuard / SleepGuard
+# FocusGuard
 
-> A privacy-first, uncompromising focus and sleep discipline lock that eliminates digital distractions and restores your productivity.
+> A privacy-first, uncompromising focus and sleep discipline lock that eliminates digital distractions, defeats background process killers, and restores your productivity.
 
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20(WIP)-3DDC84.svg?style=flat)](https://www.android.com)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20(WIP)-3DDC84.svg?style=flat&logo=android)](https://www.android.com)
 [![Expo](https://img.shields.io/badge/Expo-SDK%2058-black.svg?style=flat&logo=expo)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/React%20Native-0.88-61DAFB.svg?style=flat&logo=react)](https://reactnative.dev)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6.svg?style=flat&logo=typescript)](https://www.typescriptlang.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ---
 
 ## 📂 Repository Structure
 
-This repository contains both the native Android implementation and the React Native / Expo hybrid version:
+This monorepo contains the cross-platform React Native / Expo application alongside the native Kotlin reference implementation:
 
 ```
 focusGuard/
-├── SleepGuard/     # 📱 React Native / Expo implementation (Expo SDK 58, Expo Router v5)
-└── kotlin-jav/     # 🤖 Native Android implementation (Kotlin 2.2, Jetpack Compose, Material 3)
+├── focusGuard/     # 📱 React Native / Expo application (Expo SDK 58, Expo Router v5, TypeScript)
+├── kotlin-jav/     # 🤖 Native Android reference (Kotlin 2.2, Jetpack Compose, Room, Android 15/16)
+└── openspec/       # 📐 OpenSpec formal specifications, architectural designs, and change archives
 ```
 
-| Project | Stack | Description | Status |
+| Project | Tech Stack | Description | Status |
 | :--- | :--- | :--- | :--- |
-| [**SleepGuard**](./SleepGuard) | React Native 0.88, Expo SDK 58, Expo Router v5, TypeScript | Hybrid core app with tactile rotary dial UI, animated themes, and native Android enforcement modules via Expo CNG. | 🚀 Active Migration / Feature Dev |
-| [**kotlin-jav**](./kotlin-jav) | Native Kotlin 2.2, Jetpack Compose, Room, Android 15/16 ready | Production-ready native Android focus lock with un-dismissible accessibility overlay, boot resilience, and zero network calls. | 🛡️ Stable Native Reference |
+| [**focusGuard**](./focusGuard) | React Native 0.88, Expo SDK 58, Expo Router v5, Reanimated 4, TypeScript 6 | Universal mobile application featuring tactile rotary dial controls, SQLite WAL storage, and native Android enforcement via Continuous Native Generation (CNG). | 🚀 **Primary Application** |
+| [**kotlin-jav**](./kotlin-jav) | Pure Kotlin 2.2, Jetpack Compose, Room 2.8, Android 15/16 ready | Battle-tested native Android focus lock reference architecture with un-dismissible accessibility overlays, boot resilience, and zero network calls. | 🛡️ **Native Reference** |
 
 ---
 
 ## ⚡ Quick Start
 
-### 1. SleepGuard (React Native / Expo)
+### 1. focusGuard (React Native / Expo)
 
-Navigate to the `SleepGuard` directory:
+Prerequisites: Node.js 20+, pnpm 9+, Android Studio / Android SDK (for native Android builds).
 
 ```bash
-cd SleepGuard
+# Navigate to the React Native app directory
+cd focusGuard
 
 # Install dependencies
-pnpm install # or npm install
+pnpm install
 
-# Start the Expo development server
-npx expo start
+# Run automated sanity check (TypeScript + ESLint + Jest)
+pnpm test:sanity
+
+# Start Expo interactive development server
+pnpm start
+
+# Run on connected Android device / emulator with native enforcer module
+pnpm android
 ```
 
-For development builds with custom native modules:
-```bash
-# Run on Android device or emulator
-npx expo run:android
-```
-
-For more details, see the [SleepGuard Documentation](./SleepGuard/README.md) and [Migration Plan](./SleepGuard/MIGRATION_PLAN.md).
+For complete setup instructions, component architecture, and native module documentation, see [focusGuard/README.md](./focusGuard/README.md).
 
 ### 2. FocusGuard Native Android (`kotlin-jav`)
 
-Navigate to `kotlin-jav/` or open it directly in Android Studio:
+Prerequisites: Android Studio Ladybug (2024.2.1+) or JDK 17.
 
 ```bash
+# Navigate to the native Android directory
 cd kotlin-jav
-
-# Build debug APK
-./gradlew assembleDebug
 
 # Run unit tests
 ./gradlew testDebugUnitTest
+
+# Build debug APK for sideloading
+./gradlew assembleDebug
+
+# Install on connected device via ADB
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-For more details on building and releasing, see [kotlin-jav/README.md](./kotlin-jav/README.md).
+For full architecture diagrams, Room schemas, and Play Store guidelines, see [kotlin-jav/README.md](./kotlin-jav/README.md).
 
 ---
 
 ## 🛡️ Core Philosophy
 
 - **Un-Dismissible Enforcement**: Active focus commitments cannot be casually swiped away, bypassed via recent apps, or killed by aggressive background process managers.
-- **Privacy First & 100% Offline**: Zero tracking, zero analytics, zero external network access, and zero screen inspection.
-- **Safety by Design**: Emergency calls and system dialers are dynamically whitelisted so vital communications remain accessible.
+- **Privacy First & 100% Offline**: Zero analytics, zero telemetry, zero external network requests, and zero on-screen content inspection (`canRetrieveWindowContent = false`).
+- **Safety by Design**: Emergency calls, incoming rings, and system dialers are dynamically whitelisted so vital communications remain accessible at all times.
+- **Doze & Reboot Resilience**: Sessions are reconciled against absolute wall-clock epoch timestamps, surviving deep power-saving Doze mode and device restarts.
 
 ---
 
 ## 📄 License
 
-Licensed under the [Apache License, Version 2.0](kotlin-jav/LICENSE).
+FocusGuard is open-source software licensed under the [Apache License, Version 2.0](LICENSE).
