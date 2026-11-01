@@ -4,6 +4,7 @@ import { allowlistPolicy, AllowlistPolicy } from '../domain/AllowlistPolicy';
 import { sessionEngine } from '../domain/SessionEngine';
 import { ScheduleEngine } from '../domain/ScheduleEngine';
 import { DB_NAME } from '../data/db';
+import FocusEnforcer from '../modules/FocusEnforcer';
 
 describe('Sanity Check Suite', () => {
   test('brand theme colors are defined with high contrast tokens', () => {
@@ -32,5 +33,12 @@ describe('Sanity Check Suite', () => {
 
   test('database configuration targets focusguard.db', () => {
     expect(DB_NAME).toBe('focusguard.db');
+  });
+
+  test('focus enforcer interface exposes all permission types including APP_DETAILS', () => {
+    expect(FocusEnforcer).toBeDefined();
+    expect(typeof FocusEnforcer.openSettingsForPermission).toBe('function');
+    expect(FocusEnforcer.openSettingsForPermission('APP_DETAILS')).toBe(true);
+    expect(FocusEnforcer.openSettingsForPermission('ACCESSIBILITY')).toBe(true);
   });
 });

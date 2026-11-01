@@ -7,6 +7,8 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { RotaryDial } from '../../components/RotaryDial';
 import { DurationChips } from '../../components/DurationChips';
 import { Colors } from '../../constants/colors';
@@ -17,6 +19,7 @@ import { FocusSession } from '../../domain/types';
 import { OemBatteryGuideModal } from '../../components/OemBatteryGuideModal';
 
 export default function FocusDashboard() {
+  const insets = useSafeAreaInsets();
   const [selectedMinutes, setSelectedMinutes] = useState(25);
   const [activeSession, setActiveSession] = useState<FocusSession | null>(null);
   const [remainingMs, setRemainingMs] = useState(0);
@@ -92,8 +95,14 @@ export default function FocusDashboard() {
     }
 
     const durationMs = selectedMinutes * 60 * 1000;
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
     const res = await sessionEngine.startQuickSession(durationMs);
     if (res.success && res.session) {
+      try {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {}
       setActiveSession(res.session);
       setRemainingMs(durationMs);
     } else {
@@ -111,7 +120,16 @@ export default function FocusDashboard() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: Math.max(insets.top + 16, 44),
+          paddingBottom: insets.bottom + 24,
+        },
+      ]}
+    >
       {/* Top Status Bar */}
       <View style={styles.statusBar}>
         <View style={styles.statusDotRow}>

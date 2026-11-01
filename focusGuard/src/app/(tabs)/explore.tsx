@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
 import FocusEnforcer from '../../modules/FocusEnforcer';
 import { router } from 'expo-router';
 
 export default function ExploreScreen() {
+  const insets = useSafeAreaInsets();
   const [a11yStatus, setA11yStatus] = useState(false);
   const [alarmStatus, setAlarmStatus] = useState(false);
   const [batteryStatus, setBatteryStatus] = useState(false);
@@ -26,7 +28,16 @@ export default function ExploreScreen() {
   }, []);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: Math.max(insets.top + 16, 44),
+          paddingBottom: insets.bottom + 24,
+        },
+      ]}
+    >
       <Text style={styles.title}>SYSTEM ARCHITECTURE</Text>
       <Text style={styles.subtitle}>
         FocusGuard operates on a zero-network, 100% offline security model with Continuous Native Generation (CNG).

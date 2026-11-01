@@ -8,8 +8,9 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SymbolView } from 'expo-symbols';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 function NativeTabBarButton(props: any) {
@@ -42,6 +43,13 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const colors = Colors[isDark ? 'dark' : 'light'];
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 6);
+  const tabHeight = Platform.select({
+    ios: 56 + insets.bottom,
+    android: 62 + bottomInset,
+    default: 60,
+  });
 
   return (
     <Tabs
@@ -53,28 +61,10 @@ export default function TabLayout() {
           backgroundColor: '#121316',
           borderTopColor: '#2E323E',
           borderTopWidth: StyleSheet.hairlineWidth,
-          ...Platform.select({
-            android: {
-              height: 64,
-              paddingBottom: Spacing.two,
-              paddingTop: Spacing.one,
-              elevation: 8,
-            },
-            ios: {
-              height: 84,
-              paddingBottom: Spacing.four,
-              paddingTop: Spacing.one,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: -2 },
-              shadowOpacity: 0.3,
-              shadowRadius: 4,
-            },
-            web: {
-              height: 60,
-              paddingBottom: Spacing.one,
-              paddingTop: Spacing.one,
-            },
-          }),
+          height: tabHeight,
+          paddingBottom: bottomInset,
+          paddingTop: 6,
+          elevation: 8,
         },
         tabBarLabelStyle: {
           fontSize: 12,
