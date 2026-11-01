@@ -30,7 +30,7 @@ Most screen-time limiters and app blockers fail when willpower breaks. Standard 
 
 - **Node.js**: `20.x` or higher
 - **Package Manager**: `pnpm` (recommended), `npm`, or `yarn`
-- **Android Development** (for native builds): Android Studio, Android SDK (`compileSdk 35+`, `minSdk 24`), and an Android device or emulator with USB debugging enabled
+- **Android Development** (for native builds): Android Studio, Android SDK (`compileSdk 37` / Android 16, `minSdk 24`), and an Android device or emulator with USB debugging enabled
 - **EAS CLI** (optional, for cloud builds): `pnpm add -g eas-cli` (or use `npx eas-cli`)
 
 ### 1. Install Dependencies

@@ -10,14 +10,14 @@ FocusGuard is built on **React Native 0.88**, **Expo SDK 58**, and Continuous Na
 
 | Target Environment | Native Module (`focus-enforcer`) | Hot Reload / Metro | Standalone (No PC needed) | Recommended Use Case |
 | :--- | :---: | :---: | :---: | :--- |
-| **Web Browser** | ❌ (Mock / Disabled) |  | ❌ | Rapid UI layout, theme, typography, routing verification |
-| **Expo Go** | ❌ **Unsupported** | ⚠️ Incompatible | ❌ | **Do not use** (throws missing native module errors) |
-| **Development Build** |  |  | ❌ (Requires Metro) | Active daily development, debugging, native module iteration |
-| **Preview Build (APK)** |  | ❌ (Bundled JS) |  | QA testing, stakeholder distribution, real-world discipline test |
-| **Production Build (AAB)**|  | ❌ (Bundled JS) |  | Google Play Console internal track / release |
+| **Web Browser** | ❌ (Safe Stubs / Mock) | ✅ | ❌ | Rapid UI layout, theme, typography, routing verification |
+| **Expo Go** | ❌ **Unsupported** | ⚠️ Incompatible | ❌ | **Do not use** (missing native Kotlin module) |
+| **Development Build** | ✅ | ✅ | ❌ (Requires Metro) | Active daily development, debugging, native module iteration |
+| **Preview Build (APK)** | ✅ | ❌ (Bundled JS) | ✅ | QA testing, stakeholder distribution, real-world discipline test |
+| **Production Build (AAB)**| ✅ | ❌ (Bundled JS) | ✅ | Google Play Console internal track / release |
 
 > [!WARNING]
-> **Expo Go is not compatible with FocusGuard**: Standard Expo Go does not contain custom native Kotlin/Java code (`modules/focus-enforcer`) or native Android manifest modifications. You must use a **Development Build** or **Preview Build** to test on Android.
+> **Expo Go is not compatible with FocusGuard**: Standard Expo Go does not contain custom native Kotlin code ([`modules/focus-enforcer/`](./modules/focus-enforcer/)) or native Android manifest modifications. You must use a **Development Build** or **Preview Build** to test on Android.
 
 ---
 
@@ -27,8 +27,8 @@ Ensure the following tools are installed before proceeding:
 
 - **Node.js**: `20.x` or higher
 - **pnpm**: `pnpm install` (project uses `pnpm-lock.yaml`)
-- **Android Studio & SDK**:
-  - Android SDK Platform `35` (Android 15) and Build-Tools `35.0.0`
+- **Android Studio & SDK** (for local Android compilation):
+  - Android SDK Platform `37` (Android 16 / SDK 37 required by Expo SDK 58 / React Native 0.88)
   - Java Development Kit (JDK 17)
   - Environment variables set in `~/.bashrc` or `~/.zshrc`:
     ```bash
@@ -37,7 +37,9 @@ Ensure the following tools are installed before proceeding:
     ```
 - **EAS CLI** (for cloud builds and internal distribution):
   ```bash
-  pnpm dlx eas-cli login
+  # Authenticate with Expo Application Services
+  eas login
+  # or: npx eas-cli login
   ```
 
 ---
@@ -45,6 +47,11 @@ Ensure the following tools are installed before proceeding:
 ## 3. Testing on Web
 
 Web testing allows rapid iteration on UI components, navigation flows, and design systems without waiting for Android Gradle compilation.
+
+### WebAssembly SQLite & Headers Support
+`expo-sqlite` uses `wa-sqlite` (WebAssembly SQLite) under the hood on web. The project's [`metro.config.js`](./metro.config.js) is preconfigured to:
+1. Treat `.wasm` files as assets (`config.resolver.assetExts.push('wasm')`).
+2. Serve required Cross-Origin isolation headers (`Cross-Origin-Embedder-Policy: credentialless` and `Cross-Origin-Opener-Policy: same-origin`) so browser `SharedArrayBuffer` can run.
 
 ### How to Run:
 ```bash
@@ -62,14 +69,16 @@ Once running, open [http://localhost:8081](http://localhost:8081) in your browse
 3. **Verify Color Schemes & UI Tokens**: Toggle dark and light modes to ensure layout and color contrast adhere to styling tokens.
 
 ### Web Limitations to Keep in Mind:
-- Native Android services (`FocusEnforcer`, Accessibility overlays, exact alarms, battery optimization, boot receivers) are disabled or no-op on Web.
-- Native SQLite and SecureStore operate in fallback/mock mode on the web.
+- Native Android services (`FocusEnforcer`, Accessibility overlays, exact alarms, battery optimization, boot receivers) operate as safe stubs.
+- Native SQLite database runs within browser IndexedDB/VFS memory.
 
 ---
 
 ## 4. Testing with Development Build
 
 A **Development Build** pairs a custom native Android binary (including all native modules like `focus-enforcer`) with the Metro bundler. This gives you native Android capabilities alongside Fast Refresh, debugging tools, and console logging.
+
+Both local and EAS profiles generate direct installable `.apk` files (`"android": { "buildType": "apk" }` in [`eas.json`](./eas.json)).
 
 ### Option A: Local Development Build (Fastest & Free)
 
@@ -87,7 +96,7 @@ npx expo run:android
 
 Once compiled and installed, start or reconnect Metro:
 ```bash
-pnpm start
+pnpm run start:dev
 ```
 
 ### Option B: Cloud Development Build via EAS
@@ -95,12 +104,23 @@ pnpm start
 If you don't have a local Android SDK configured or want to share the development build with team members:
 
 ```bash
-# Trigger an Android development build on EAS Cloud
-eas build --profile development --platform android
+# Cloud EAS build (outputs downloadable development .apk)
+pnpm run build:dev
+# or: eas build --profile development --platform android
 
-# Or build locally using EAS CLI and Docker/local tools:
-eas build --profile development --platform android --local
+# Or build locally using EAS CLI:
+pnpm run build:dev:local
+# or: eas build --profile development --platform android --local
 ```
+
+### Connecting to the Development Client
+Once the development `.apk` is installed on your physical device or emulator:
+1. Start the Metro bundler:
+   ```bash
+   pnpm run start:dev
+   ```
+2. Open the FocusGuard development client on the device.
+3. Scan the QR code or select the local Metro URL (`http://<your-ip>:8081`).
 
 ### Development Client Testing Features:
 - **Fast Refresh**: Save any React Native component file to see updates immediately.
@@ -110,7 +130,7 @@ eas build --profile development --platform android --local
   # View live React Native and FocusGuard logs
   adb logcat *:S ReactNative:V ReactNativeJS:V FocusGuard:V FocusEnforcer:V
   ```
-- **When to Rebuild Native**: You only need to re-run `pnpm android` when modifying native files (`modules/focus-enforcer/`, `android/`, `app.json` plugins, or installing new native libraries). Pure JavaScript/TypeScript edits only require Metro reload (`r` in the terminal).
+- **When to Rebuild Native**: You only need to rebuild native code when modifying native files (`modules/focus-enforcer/`, `plugins/`, `app.json` plugins, or installing new native libraries). Pure JavaScript/TypeScript edits only require Metro reload (`r` in the terminal).
 
 ---
 
@@ -121,7 +141,7 @@ The **Preview Build** generates a self-contained, standalone `.apk` that bundles
 - Testing persistent boot receivers, deep doze modes, and un-dismissible lock sessions
 - Sideloading onto physical test devices
 
-FocusGuard's `eas.json` is pre-configured for internal APK generation:
+FocusGuard's [`eas.json`](./eas.json) is pre-configured for internal APK generation:
 ```json
 "preview": {
   "distribution": "internal",
@@ -135,7 +155,8 @@ FocusGuard's `eas.json` is pre-configured for internal APK generation:
 
 #### Method 1: Cloud Build via EAS (Recommended)
 ```bash
-eas build --profile preview --platform android
+pnpm run build:preview
+# or: eas build --profile preview --platform android
 ```
 When complete, EAS outputs a direct download link and QR code. Scan the QR code on your Android device to install the APK directly.
 
@@ -189,6 +210,7 @@ Because FocusGuard enforces strict discipline locks, verify the following critic
 ### Test 1: Permission Flow Verification
 - [ ] **Accessibility Service**: Verify the app requests and navigates the user to enable `SleepGuard Focus Service`.
 - [ ] **Overlay Permission (`SYSTEM_ALERT_WINDOW`)**: Verify prompt to enable "Display over other apps".
+- [ ] **Exact Alarms (`SCHEDULE_EXACT_ALARM`)**: Verify permission for exact timing across Android 14+.
 - [ ] **Ignore Battery Optimization**: Ensure the app prompts to exempt itself from aggressive OEM battery killers.
 
 ### Test 2: Active Session Blocking
@@ -262,6 +284,34 @@ pnpm lint
 ---
 
 ## 9. Troubleshooting & FAQ
+
+### Issue: `Unable to resolve module ./wa-sqlite/wa-sqlite.wasm in web`
+- **Cause**: Metro does not recognize `.wasm` files as assets by default.
+- **Fix**: Ensure [`metro.config.js`](./metro.config.js) contains `config.resolver.assetExts.push('wasm')` and restarts with cache clear:
+  ```bash
+  pnpm web -- -c
+  ```
+
+### Issue: Gradle error `checkReleaseAarMetadata` (compileSdk mismatch)
+- **Error**: `Dependency ':expo-modules-core' requires libraries and applications to compile against version 37 or later of Android APIs. :focus-enforcer is currently compiled against android-35.`
+- **Cause**: Custom native module hardcoded an older Android SDK version incompatible with Expo SDK 58.
+- **Fix**: In [`modules/focus-enforcer/android/build.gradle`](./modules/focus-enforcer/android/build.gradle), use dynamic SDK resolution from the root project:
+  ```groovy
+  def safeExtGet(prop, fallback) {
+      rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+  }
+  android {
+      compileSdk safeExtGet('compileSdkVersion', 37)
+      defaultConfig {
+          minSdk safeExtGet('minSdkVersion', 24)
+          targetSdk safeExtGet('targetSdkVersion', 37)
+      }
+  }
+  ```
+
+### Issue: `Cannot find module '@expo/config-plugins'` during EAS build
+- **Cause**: Strict package managers like `pnpm` isolate transitive dependencies. If custom plugins in `plugins/` require `@expo/config-plugins`, it must be declared explicitly in dependencies.
+- **Fix**: Run `npx expo install @expo/config-plugins`.
 
 ### Issue: `"Cannot find native module 'FocusEnforcer'"`
 - **Cause**: The app is running in standard Expo Go or a JavaScript bundle was loaded into an older native build that didn't include the module.
