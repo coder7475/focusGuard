@@ -7,6 +7,7 @@ module.exports = {
     '^.+\\.tsx?$': ['ts-jest', { diagnostics: false }],
   },
   moduleNameMapper: {
+    '^expo$': '<rootDir>/src/data/__mocks__/expo.ts',
     '^expo-sqlite$': '<rootDir>/src/data/__mocks__/expo-sqlite.ts',
     '^expo-modules-core$': '<rootDir>/src/data/__mocks__/expo-modules-core.ts',
     '^@/(.*)$': '<rootDir>/src/$1',

@@ -1,4 +1,4 @@
-import { requireNativeModule } from 'expo-modules-core';
+import { requireNativeModule } from 'expo';
 
 export type PermissionType = 'ACCESSIBILITY' | 'EXACT_ALARM' | 'BATTERY' | 'OVERLAY';
 

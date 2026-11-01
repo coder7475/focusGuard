@@ -2,6 +2,8 @@
   "name": "focus-enforcer",
   "platforms": ["android"],
   "android": {
-    "package": "com.coder7575.sleepguard.enforcer.FocusEnforcerPackage"
+    "modules": [
+      "com.coder7575.sleepguard.enforcer.FocusEnforcerModule"
+    ]
   }
 }

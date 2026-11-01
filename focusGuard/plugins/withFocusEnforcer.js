@@ -1,4 +1,4 @@
-const { withAndroidManifest, withDangerousMod, withStringsXml } = require('@expo/config-plugins');
+const { withAndroidManifest, withDangerousMod, withStringsXml } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
