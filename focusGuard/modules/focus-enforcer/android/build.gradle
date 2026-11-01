@@ -1,17 +1,21 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
+def safeExtGet(prop, fallback) {
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
 android {
-    compileSdkVersion 35
+    compileSdk safeExtGet('compileSdkVersion', 37)
     namespace "com.coder7575.sleepguard.enforcer"
     defaultConfig {
-        minSdkVersion 24
-        targetSdkVersion 35
+        minSdk safeExtGet('minSdkVersion', 24)
+        targetSdk safeExtGet('targetSdkVersion', 37)
     }
 }
 
 dependencies {
     implementation project(':expo-modules-core')
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.core:core-ktx:1.15.0"
 }

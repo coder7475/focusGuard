@@ -7,7 +7,7 @@
 [![React Native](https://img.shields.io/badge/React%20Native-0.88-61DAFB.svg?style=flat&logo=react)](https://reactnative.dev)
 [![React](https://img.shields.io/badge/React-19.3-61DAFB.svg?style=flat&logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6.svg?style=flat&logo=typescript)](https://www.typescriptlang.org)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](../LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
 ---
 
@@ -30,12 +30,12 @@ Most screen-time limiters and app blockers fail when willpower breaks. Standard 
 
 - **Node.js**: `20.x` or higher
 - **Package Manager**: `pnpm` (recommended), `npm`, or `yarn`
-- **Android Development**: Android Studio, Android SDK (`compileSdk 35+`, `minSdk 24`), and an Android device or emulator with USB debugging enabled
+- **Android Development** (for native builds): Android Studio, Android SDK (`compileSdk 35+`, `minSdk 24`), and an Android device or emulator with USB debugging enabled
+- **EAS CLI** (optional, for cloud builds): `pnpm add -g eas-cli` (or use `npx eas-cli`)
 
 ### 1. Install Dependencies
 
 ```bash
-cd focusGuard
 pnpm install
 ```
 
@@ -47,24 +47,53 @@ Validate TypeScript types, ESLint rules, and Jest unit tests in a single command
 pnpm test:sanity
 ```
 
-### 3. Run on Android Device / Emulator
+### 3. Choose Your Development Workflow
 
-Build and run the native debug application with the custom `focus-enforcer` module compiled:
+#### Option A: Web UI Development (Fastest Iteration)
+
+Develop and style UI components rapidly in the browser with hot reload. The Metro bundler is preconfigured in `metro.config.js` to serve `.wasm` assets (`wa-sqlite.wasm`) and cross-origin isolation headers for SQLite support on web:
+
+```bash
+pnpm web
+# Starts Metro web server at http://localhost:8081
+```
+
+> **Note**: While Web development is great for UI layout, theming, and domain logic, native Android enforcement features (`AccessibilityService`, overlay windows, alarms, and boot receivers) operate as safe stubs.
+
+#### Option B: Local Android Development Build
+
+Compile native Kotlin code, autolink the `focus-enforcer` module, and launch on your connected device/emulator:
 
 ```bash
 pnpm android
 # or: npx expo run:android
 ```
 
-> **Note**: Because FocusGuard relies on native Android Accessibility, Foreground Service, and Overlay APIs via Continuous Native Generation (CNG), you must run a **development build** (`pnpm android`), not Expo Go.
+#### Option C: EAS Cloud Development Build
 
-### 4. Start the Development Server
-
-To restart or connect Metro after building:
+Generate an installable Development Client `.apk` via Expo Application Services (EAS):
 
 ```bash
-pnpm start
+# Cloud EAS build (outputs downloadable .apk)
+pnpm run build:dev
+
+# Or local machine EAS build
+pnpm run build:dev:local
 ```
+
+Once installed on your device or emulator, connect it to your local Metro server:
+
+```bash
+pnpm run start:dev
+```
+
+---
+
+## Testing Across Environments
+
+For detailed testing checklists covering **Web**, **Development Builds**, **Standalone Preview APKs**, and native resilience verification (Accessibility, Boot Receivers, Deep Doze, OEM battery profiles), see:
+
+👉 **[Testing & Build Guide (TESTING.md)](TESTING.md)**
 
 ---
 
@@ -107,6 +136,7 @@ flowchart TD
 
 3. **Persistent SQLite Storage (`src/data/db.ts`)**:
    - Uses `expo-sqlite` configured with **Write-Ahead Logging (`journal_mode = WAL`)** for thread-safe concurrent reads and writes between the React Native JavaScript thread and background native services.
+   - Preconfigured with WebAssembly (`wa-sqlite.wasm`) in `metro.config.js` to enable web UI previewing.
 
 4. **Pure Domain Engines**:
    - [`SessionEngine.ts`](./src/domain/SessionEngine.ts): Manages session lifecycle, active state reconciliation, and persistence.
@@ -124,6 +154,8 @@ flowchart TD
 ```
 focusGuard/
 ├── app.json                       # Expo configuration & plugin declarations
+├── eas.json                       # EAS Build profiles (development, preview, production)
+├── metro.config.js                # Metro bundler config (.wasm support & COOP/COEP headers)
 ├── package.json                   # Dependency tree, build scripts, test suites
 ├── plugins/
 │   └── withFocusEnforcer.js       # Expo config plugin for native permissions & services
@@ -134,7 +166,7 @@ focusGuard/
 │       └── src/                   # TypeScript native module interface & web fallbacks
 └── src/
     ├── __tests__/                 # Automated sanity check test suite
-    ├── app/                       # Expo Router v5 file-based navigation
+    ├── app/                       # Expo Router file-based navigation
     │   ├── _layout.tsx            # Root navigation stack & theme provider
     │   ├── onboarding.tsx         # 4-step permission setup wizard
     │   └── (tabs)/
@@ -153,8 +185,13 @@ focusGuard/
 
 | Script | Command | Purpose |
 | :--- | :--- | :--- |
-| **`pnpm start`** | `expo start` | Starts the Metro development server. |
-| **`pnpm android`** | `expo run:android` | Compiles native code, autolinks modules, and launches on Android. |
+| **`pnpm start`** | `expo start` | Starts standard Metro development server. |
+| **`pnpm run start:dev`** | `expo start --dev-client` | Starts Metro bundler specifically for pairing with a development build. |
+| **`pnpm web`** | `expo start --web` | Starts Metro development server targeted for Web UI preview. |
+| **`pnpm android`** | `expo run:android` | Builds native Android binary locally and launches on connected device/emulator. |
+| **`pnpm run build:dev`** | `eas build --profile development --platform android` | Triggers cloud EAS build for an installable development client `.apk`. |
+| **`pnpm run build:dev:local`**| `eas build --profile development --platform android --local` | Builds the development client `.apk` locally using local Android SDK and EAS. |
+| **`pnpm run build:preview`** | `eas build --profile preview --platform android` | Triggers cloud EAS build for an internal distribution standalone `.apk`. |
 | **`pnpm test`** | `jest` | Runs the Jest unit test suite across domain engines and models. |
 | **`pnpm lint`** | `expo lint` | Audits code against React 19 compiler rules and ESLint standard. |
 | **`pnpm test:sanity`** | `pnpm tsc --noEmit && pnpm lint && pnpm jest` | **Full CI sanity gate**: checks types, lint, and unit tests. |
@@ -177,7 +214,7 @@ To enforce focus locks reliably, FocusGuard requires four Android system privile
 
 ---
 
-## Verification & Testing
+## Verification & Quality Gates
 
 FocusGuard enforces a strict **zero-warning policy**:
 
@@ -206,4 +243,4 @@ All 22 unit tests across `SessionEngine`, `ScheduleEngine`, `AllowlistPolicy`, a
 
 ## License
 
-FocusGuard is open-source software licensed under the [Apache License, Version 2.0](../LICENSE).
+FocusGuard is open-source software licensed under the [Apache License, Version 2.0](./LICENSE).
