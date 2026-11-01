@@ -15,7 +15,7 @@ Pure React Native applications run inside a JavaScript runtime thread. If an app
 2. The Android OS can kill the JavaScript runtime during deep Doze or background memory pressure.
 3. Swapping apps via the recent tasks switcher creates touch leakage, exposing blocked applications.
 
-`focus-enforcer` provides a standalone native Kotlin subsystem that operates directly at the Android OS WindowManager and Accessibility Service layer. Even if the React Native activity is killed or backgrounded, native enforcement continues uninterrupted.
+`focus-enforcer` provides a standalone native Kotlin subsystem that operates directly at the Android OS `WindowManager` and `AccessibilityService` layers. Even if the React Native activity is backgrounded or destroyed, native enforcement continues uninterrupted.
 
 ---
 
@@ -37,6 +37,9 @@ flowchart TD
         Alarm["AlarmCoordinator"] --> AlarmMgr["AlarmManager (setExactAndAllowWhileIdle)"]
         AlarmMgr --> AlarmRecv["AlarmReceiver"]
         Boot["BootReceiver"] --> BootRecv["BOOT_COMPLETED Reconciliation"]
+        
+        DB["FocusDatabaseHelper / NativeDbHelper"] --> Access
+        DB --> BootRecv
     end
 
     API --> Ticker
@@ -47,13 +50,14 @@ flowchart TD
 
 | Component | Responsibility | Technical Details |
 | :--- | :--- | :--- |
-| **`FocusEnforcerModule.kt`** | JavaScript Bridge | Implements the modern Expo Kotlin Modules API (`expo.modules.kotlin.modules.Module`). |
-| **`FocusAccessibilityService.kt`** | Window Interception | Detects `TYPE_WINDOW_STATE_CHANGED` events within 100ms. Configured with `canRetrieveWindowContent = false` for zero screen snooping. |
+| **`FocusEnforcerModule.kt`** | JavaScript Bridge | Implements the modern Expo Kotlin Modules API (`expo.modules.kotlin.modules.Module`). Dispatches settings intents and bridges lock commands. |
+| **`FocusAccessibilityService.kt`** | Window Interception | Detects `TYPE_WINDOW_STATE_CHANGED` events within 100ms. Configured with `canRetrieveWindowContent = false` for zero screen inspection. |
 | **`LockOverlayWindowManager.kt`** | Un-Dismissible Barrier | Injects a full-screen `TYPE_ACCESSIBILITY_OVERLAY` view surface directly into the Android `WindowManager`. Swallows all back, home, and touch gestures. |
 | **`FocusForegroundService.kt`** | State & Ticker Preservation | Runs an active `specialUse` foreground service with persistent notification countdown updates (`MM:SS`). |
 | **`AlarmCoordinator.kt`** | Exact Timing | Registers exact wall-clock alarms with `setExactAndAllowWhileIdle` to guarantee session completion survives deep Doze. |
 | **`BootReceiver.kt`** | Crash & Reboot Recovery | Catches `BOOT_COMPLETED` and `LOCKED_BOOT_COMPLETED` broadcasts to re-arm active sessions before the user opens any app. |
 | **`SystemRoleResolver.kt`** | Safe Communication | Dynamically queries `TelecomManager` and `Telephony.Sms` to whitelist default phone and emergency numbers without requiring invasive `QUERY_ALL_PACKAGES` permissions. |
+| **`FocusDatabaseHelper.kt`** | Native Persistence | Directly queries the shared SQLite WAL database file (`focusguard.db`) on the native side during boot and background alarm events without waking the React Native engine. |
 
 ---
 
@@ -65,6 +69,25 @@ Import the typed module in your application:
 import FocusEnforcer, { PermissionType } from '../modules/focus-enforcer/src';
 ```
 
+### Type Definitions
+
+```typescript
+export type PermissionType = 
+  | 'ACCESSIBILITY' 
+  | 'EXACT_ALARM' 
+  | 'BATTERY' 
+  | 'OVERLAY' 
+  | 'APP_DETAILS';
+
+export interface FocusEnforcerNative {
+  startFocusLock(endsAtEpochMs: number): boolean;
+  stopFocusLock(): boolean;
+  getPermissionStatus(permissionName: PermissionType): boolean;
+  openSettingsForPermission(permissionName: PermissionType): boolean;
+  openEmergencyDialer(): boolean;
+}
+```
+
 ### Methods
 
 #### `startFocusLock(endsAtEpochMs: number): boolean`
@@ -74,8 +97,9 @@ Activates the native focus lock until the specified epoch timestamp (millisecond
 - Signals `FocusAccessibilityService` to enforce the lock overlay on non-allowlisted apps.
 
 ```typescript
-const endsAt = Date.now() + 25 * 60 * 1000; // 25 minutes
-const success = FocusEnforcer.startFocusLock(endsAt);
+const durationMs = 25 * 60 * 1000; // 25 minutes
+const endsAtEpochMs = Date.now() + durationMs;
+const success = FocusEnforcer.startFocusLock(endsAtEpochMs);
 ```
 
 #### `stopFocusLock(): boolean`
@@ -92,10 +116,11 @@ FocusEnforcer.stopFocusLock();
 Queries the real-time grant status of a required Android system privilege.
 
 Supported values for `permissionName`:
-- `'ACCESSIBILITY'`: Checks if `FocusAccessibilityService` is active in `Settings.Secure`.
+- `'ACCESSIBILITY'`: Checks if `FocusAccessibilityService` is enabled in `Settings.Secure`.
 - `'EXACT_ALARM'`: Checks `AlarmManager.canScheduleExactAlarms()` (Android 12+ / API 31+).
 - `'BATTERY'`: Checks `PowerManager.isIgnoringBatteryOptimizations()`.
 - `'OVERLAY'`: Checks `Settings.canDrawOverlays()`.
+- `'APP_DETAILS'`: Always returns `false` to indicate intent redirection is available.
 
 ```typescript
 const isAccessibilityGranted = FocusEnforcer.getPermissionStatus('ACCESSIBILITY');
@@ -104,8 +129,14 @@ const isAccessibilityGranted = FocusEnforcer.getPermissionStatus('ACCESSIBILITY'
 #### `openSettingsForPermission(permissionName: PermissionType): boolean`
 Dispatches an explicit system intent that navigates the user directly to the relevant settings configuration page.
 
+- `'ACCESSIBILITY'`: Dispatches `Settings.ACTION_ACCESSIBILITY_SETTINGS`.
+- `'EXACT_ALARM'`: Dispatches `Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM` (Android 12+).
+- `'BATTERY'`: Dispatches `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+- `'OVERLAY'`: Dispatches `Settings.ACTION_MANAGE_OVERLAY_PERMISSION`.
+- `'APP_DETAILS'`: Dispatches `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` (essential for Android 13+ restricted settings).
+
 ```typescript
-FocusEnforcer.openSettingsForPermission('ACCESSIBILITY');
+FocusEnforcer.openSettingsForPermission('APP_DETAILS');
 ```
 
 #### `openEmergencyDialer(): boolean`
@@ -121,7 +152,7 @@ FocusEnforcer.openEmergencyDialer();
 
 | Platform | Behavior |
 | :--- | :--- |
-| **Android (Device/Emulator)** | Full native implementation via Kotlin services, window manager overlays, and exact alarms. |
+| **Android (Device/Emulator)** | Full native implementation via Kotlin services, window manager overlays, exact alarms, and SQLite WAL integration. |
 | **iOS / Web / Simulators** | Graceful fallback stub: functions safely return `true` without crashing, enabling cross-platform UI development and testing. |
 
 ---
@@ -136,4 +167,4 @@ The plugin automates:
 3. Declaring `FocusForegroundService` with `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`.
 4. Registering `BootReceiver` and `AlarmReceiver`.
 
-No manual modifications to the generated `android/` directory are required.
+No manual modifications to generated `android/` directory files are needed.

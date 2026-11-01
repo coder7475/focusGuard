@@ -2,7 +2,7 @@
 
 > A privacy-first, un-dismissible focus and sleep discipline lock built with React Native 0.88, Expo SDK 58, and Continuous Native Generation (CNG).
 
-[![Platform](https://img.shields.io/badge/Platform-Android-3DDC84.svg?style=flat&logo=android)](https://www.android.com)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Web%20(Preview)-3DDC84.svg?style=flat&logo=android)](https://www.android.com)
 [![Expo](https://img.shields.io/badge/Expo-SDK%2058-black.svg?style=flat&logo=expo)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/React%20Native-0.88-61DAFB.svg?style=flat&logo=react)](https://reactnative.dev)
 [![React](https://img.shields.io/badge/React-19.3-61DAFB.svg?style=flat&logo=react)](https://react.dev)
@@ -17,7 +17,7 @@ Most screen-time limiters and app blockers fail when willpower breaks. Standard 
 
 **FocusGuard is engineered for uncompromised discipline:**
 
-- **Un-Dismissible Full-Screen Overlay**: Uses Android's `TYPE_ACCESSIBILITY_OVERLAY` to cover blocked apps and consume all hardware back, home, and touch gestures.
+- **Un-Dismissible Full-Screen Overlay**: Injects Android's `TYPE_ACCESSIBILITY_OVERLAY` directly into the system WindowManager to cover blocked apps and consume all hardware back, home, and touch gestures.
 - **Deep Doze & Reboot Resilience**: Tracks focus sessions via absolute wall-clock epoch time with exact alarms (`AlarmManager.setExactAndAllowWhileIdle`) and native boot receivers (`BOOT_COMPLETED`).
 - **Safety by Design**: System dialers, emergency numbers, and incoming calls are dynamically whitelisted without invasive permissions.
 - **Zero Network & 100% Offline**: Zero analytics, zero external network permissions in the manifest, and zero screen inspection (`canRetrieveWindowContent = false`).
@@ -58,7 +58,8 @@ pnpm web
 # Starts Metro web server at http://localhost:8081
 ```
 
-> **Note**: While Web development is great for UI layout, theming, and domain logic, native Android enforcement features (`AccessibilityService`, overlay windows, alarms, and boot receivers) operate as safe stubs.
+> [!NOTE]
+> While Web development enables rapid iteration on UI layout, theming, and domain logic, native Android enforcement features (`AccessibilityService`, overlay windows, exact alarms, and boot receivers) operate as safe stubs in non-Android environments.
 
 #### Option B: Local Android Development Build
 
@@ -93,7 +94,7 @@ pnpm run start:dev
 
 For detailed testing checklists covering **Web**, **Development Builds**, **Standalone Preview APKs**, and native resilience verification (Accessibility, Boot Receivers, Deep Doze, OEM battery profiles), see:
 
-👉 **[Testing & Build Guide (TESTING.md)](TESTING.md)**
+👉 **[Testing & Build Guide (TESTING.md)](./TESTING.md)**
 
 ---
 
@@ -106,20 +107,20 @@ flowchart TD
     subgraph UI ["React Native Layer (Expo SDK 58)"]
         Dial["RotaryDial (Reanimated 4)"] --> SessionEngine["SessionEngine (Domain)"]
         Schedules["ScheduleManager"] --> ScheduleEngine["ScheduleEngine (Domain)"]
-        SessionEngine --> DB["SQLite Database (WAL Mode)"]
+        SessionEngine --> DB[("SQLite Database (WAL Mode)")]
         ScheduleEngine --> DB
     end
 
     subgraph NativeBridge ["Expo Module Bridge"]
-        SessionEngine -- "startFocusLock(epochMs)" --> FocusEnforcerNative["FocusEnforcerModule"]
+        SessionEngine -- "startFocusLock(epochMs)" --> FocusEnforcerNative["FocusEnforcerModule (Kotlin)"]
     end
 
     subgraph AndroidCore ["Native Android Layer (Kotlin)"]
         FocusEnforcerNative --> FGS["FocusForegroundService (specialUse Ticker)"]
         FocusEnforcerNative --> Alarm["AlarmCoordinator (Exact Alarms)"]
         AccessService["FocusAccessibilityService"] --> Event{"Window Changed?"}
-        Event -- "Allowlisted?" --> Pass["Allow Package"]
-        Event -- "Blocked?" --> Overlay["LockOverlayManager (TYPE_ACCESSIBILITY_OVERLAY)"]
+        Event -- "Allowlisted?" --> Pass["Allow Package (Dialer/SMS)"]
+        Event -- "Blocked?" --> Overlay["LockOverlayWindowManager (TYPE_ACCESSIBILITY_OVERLAY)"]
         BootReceiver["BootReceiver (BOOT_COMPLETED)"] --> Reconcile["Re-arm Active Session"]
     end
 ```
@@ -168,6 +169,7 @@ focusGuard/
     ├── __tests__/                 # Automated sanity check test suite
     ├── app/                       # Expo Router file-based navigation
     │   ├── _layout.tsx            # Root navigation stack & theme provider
+    │   ├── index.tsx              # Splash / navigation coordinator
     │   ├── onboarding.tsx         # 4-step permission setup wizard
     │   └── (tabs)/
     │       ├── index.tsx          # Focus Dashboard & Rotary Dial timer
@@ -194,7 +196,7 @@ focusGuard/
 | **`pnpm run build:preview`** | `eas build --profile preview --platform android` | Triggers cloud EAS build for an internal distribution standalone `.apk`. |
 | **`pnpm test`** | `jest` | Runs the Jest unit test suite across domain engines and models. |
 | **`pnpm lint`** | `expo lint` | Audits code against React 19 compiler rules and ESLint standard. |
-| **`pnpm test:sanity`** | `pnpm tsc --noEmit && pnpm lint && pnpm jest` | **Full CI sanity gate**: checks types, lint, and unit tests. |
+| **`pnpm test:sanity`** | `pnpm tsc --noEmit && pnpm lint && pnpm jest` | **Full CI sanity gate**: checks types, lint, and all 23 unit tests. |
 
 ---
 
@@ -203,14 +205,25 @@ focusGuard/
 To enforce focus locks reliably, FocusGuard requires four Android system privileges configured via the onboarding wizard ([`src/app/onboarding.tsx`](./src/app/onboarding.tsx)):
 
 1. **Accessibility Service (`FocusAccessibilityService`)**:
-   - Required to intercept foreground window transitions (`TYPE_WINDOW_STATE_CHANGED`).
-   - Configured with `canRetrieveWindowContent = false` (no screen inspection, keystroke reading, or content snooping).
+   - Intercepts foreground window transitions (`TYPE_WINDOW_STATE_CHANGED`).
+   - Configured with `canRetrieveWindowContent = false` (zero screen inspection, keystroke reading, or content snooping).
 2. **Display Over Other Apps (`SYSTEM_ALERT_WINDOW`)**:
    - Permits rendering the full-screen lock overlay when a non-allowlisted application enters the foreground.
 3. **Exact Alarms (`SCHEDULE_EXACT_ALARM`)**:
    - Guarantees precise session wakeups and timer completion even in Android deep Doze power saving.
 4. **Ignore Battery Optimizations (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
    - Prevents aggressive OEM task killers (Samsung, Xiaomi MIUI/HyperOS, OnePlus) from prematurely terminating background session tickers.
+
+> [!IMPORTANT]
+> **Android 13+ (API 33+) Sideloading Notice — "Restricted Settings"**:
+> If you install FocusGuard via direct APK sideload (outside Google Play), Android 13+ disables Accessibility Services by default, showing a "Restricted setting" dialog.
+> 
+> **To unblock:**
+> 1. Open Android **Settings > Apps > FocusGuard** (or use the in-app button).
+> 2. Tap the **three vertical dots** in the top-right corner.
+> 3. Select **Allow restricted settings**.
+> 4. Verify your biometric or device PIN.
+> 5. Return to FocusGuard and enable the Accessibility Service.
 
 ---
 
@@ -229,7 +242,17 @@ pnpm lint
 pnpm test
 ```
 
-All 22 unit tests across `SessionEngine`, `ScheduleEngine`, `AllowlistPolicy`, and `sanity.test.ts` must pass before code is merged.
+All 23 unit tests across `SessionEngine`, `ScheduleEngine`, `AllowlistPolicy`, and `sanity.test.ts` must pass before code is merged:
+
+```
+PASS src/__tests__/sanity.test.ts
+PASS src/domain/__tests__/AllowlistPolicy.test.ts
+PASS src/domain/__tests__/ScheduleEngine.test.ts
+PASS src/domain/__tests__/SessionEngine.test.ts
+
+Test Suites: 4 passed, 4 total
+Tests:       23 passed, 23 total
+```
 
 ---
 

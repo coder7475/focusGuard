@@ -1,4 +1,4 @@
-# FocusGuard
+# FocusGuard (Archived Native Reference)
 
 > A privacy-first, uncompromising Android focus lock that eliminates digital distractions and restores your productivity.
 
@@ -10,7 +10,8 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-> 💡 **Looking for the React Native / Expo application?** Check out the sibling [`focusGuard/`](../focusGuard/README.md) project featuring Expo SDK 58, Continuous Native Generation, and shared domain architecture.
+> [!NOTE]
+> **Archived Reference Implementation**: This pure Kotlin & Jetpack Compose codebase represents the original, battle-tested native Android reference implementation. Active development has transitioned to the universal React Native / Expo SDK 58 application at [**`focusGuard/`**](../../focusGuard/README.md). This directory is preserved for architectural reference, ADR history, and algorithmic parity testing.
 
 ---
 
@@ -38,39 +39,6 @@ Standard app blockers fail when willpower breaks. Most timers and blockers can b
 - **7-Step Onboarding & Diagnostics Wizard**: Direct settings intent dispatchers walk you through required system permissions in under two minutes.
 
 ---
-
-## Building a Signed APK
-
-For personal installation (sideloading on your own device), sign the release build with the debug keystore (already present at `~/.android/debug.keystore`):
-
-1. Add a signing config to `app/build.gradle.kts`:
-```kotlin
-signingConfigs {
-    create("release") {
-        storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
-        storePassword = "android"
-        keyAlias = "androiddebugkey"
-        keyPassword = "android"
-    }
-}
-buildTypes {
-    release {
-        signingConfig = signingConfigs.getByName("release")
-    }
-}
-```
-2. Build:
-```bash
-JAVA_HOME=/home/fahad/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2 ./gradlew assembleRelease
-```
-3. Output: `app/build/outputs/apk/release/app-release.apk`
-4. Install: `adb install app/build/outputs/apk/release/app-release.apk`
-
-For distribution, generate a dedicated keystore instead:
-```bash
-keytool -genkeypair -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias focusguard
-```
-and reference it in the signing config (keep the keystore and passwords out of version control).
 
 ## Tech Stack
 
@@ -146,7 +114,7 @@ flowchart TD
 
 ### Running via Android Studio
 
-1. Open Android Studio and select **File > Open**, then choose the `kotlin-jav` directory.
+1. Open Android Studio and select **File > Open**, then choose the `archive/kotlin-jav` directory.
 2. Click **Sync Project with Gradle Files** (elephant icon) on the top toolbar.
 3. **Live UI Previews**: Open [`app/src/main/java/com/coder7475/focusguard/ui/home/HomeScreen.kt`](app/src/main/java/com/coder7475/focusguard/ui/home/HomeScreen.kt) and click **Split** to interact with Compose previews directly.
 4. **Deploy to Device**: Connect an Android device with USB debugging enabled (or boot an Android Virtual Device), select it in the target device dropdown, and click **Run 'app'** (`Shift+F10`).
@@ -156,11 +124,11 @@ For full step-by-step instructions, see the **[Developer Guide](doc/developer/DE
 
 ### Running via Command Line (CLI)
 
-You can build, test, and package FocusGuard without opening Android Studio:
+You can build, test, and package FocusGuard directly from your terminal:
 
 ```bash
 # Navigate to the native Android directory
-cd kotlin-jav
+cd archive/kotlin-jav
 
 # Run unit tests across all layers
 ./gradlew testDebugUnitTest
@@ -176,6 +144,44 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # Build release Android App Bundle (AAB) for Google Play
 ./gradlew bundleRelease
+```
+
+---
+
+## Building a Signed APK
+
+For personal sideloading on your device with release optimizations, you can configure release signing:
+
+1. Add a signing configuration to `app/build.gradle.kts`:
+```kotlin
+signingConfigs {
+    create("release") {
+        storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+    }
+}
+buildTypes {
+    release {
+        signingConfig = signingConfigs.getByName("release")
+    }
+}
+```
+
+2. Build the signed release APK:
+```bash
+./gradlew assembleRelease
+```
+
+3. Locate the output at `app/build/outputs/apk/release/app-release.apk` and install via ADB:
+```bash
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+For production distribution, generate a dedicated keystore:
+```bash
+keytool -genkeypair -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias focusguard
 ```
 
 ---
