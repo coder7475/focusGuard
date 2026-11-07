@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -27,8 +28,9 @@ class LockOverlayWindowManager(private val context: Context) {
         endsAtEpochMs = epochMs
     }
 
+    @Synchronized
     fun showOverlay() {
-        if (isVisible) return
+        if (isVisible || overlayView != null) return
 
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -74,7 +76,9 @@ class LockOverlayWindowManager(private val context: Context) {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -85,6 +89,7 @@ class LockOverlayWindowManager(private val context: Context) {
             windowManager.addView(layout, params)
             overlayView = layout
             isVisible = true
+            Log.d(TAG, "Lock overlay successfully displayed")
 
             // Live 1-second countdown ticker
             timerRunnable = object : Runnable {
@@ -96,17 +101,26 @@ class LockOverlayWindowManager(private val context: Context) {
                 }
             }
             handler.post(timerRunnable!!)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to display lock overlay view", e)
+            overlayView = null
+            isVisible = false
+        }
     }
 
+    @Synchronized
     fun hideOverlay() {
-        if (!isVisible || overlayView == null) return
+        if (!isVisible && overlayView == null) return
         try {
             timerRunnable?.let { handler.removeCallbacks(it) }
-            windowManager.removeView(overlayView)
-        } catch (_: Exception) {}
-        overlayView = null
-        isVisible = false
+            overlayView?.let { windowManager.removeView(it) }
+            Log.d(TAG, "Lock overlay hidden")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error while removing lock overlay view", e)
+        } finally {
+            overlayView = null
+            isVisible = false
+        }
     }
 
     private fun formatRemainingTime(): String {
@@ -115,5 +129,9 @@ class LockOverlayWindowManager(private val context: Context) {
         val m = (remaining / (1000L * 60)) % 60
         val h = remaining / (1000L * 3600)
         return String.format("%02d:%02d:%02d", h, m, s)
+    }
+
+    companion object {
+        private const val TAG = "LockOverlayManager"
     }
 }

@@ -2,17 +2,29 @@ package com.coder7575.sleepguard.enforcer
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteOpenHelper
+import java.io.File
 
-class NativeDbHelper(context: Context) : SQLiteOpenHelper(context, "focusguard.db", null, 1) {
-    override fun onCreate(db: SQLiteDatabase) {}
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+class NativeDbHelper(private val context: Context) {
+
+    private fun getReadableDatabase(): SQLiteDatabase? {
+        val dbFile = File(context.filesDir, "SQLite/focusguard.db")
+        if (!dbFile.exists()) return null
+        return try {
+            SQLiteDatabase.openDatabase(
+                dbFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     fun getActiveSessionEndsAt(): Long {
+        val db = getReadableDatabase() ?: return 0L
         return try {
-            val db = readableDatabase
             val cursor = db.rawQuery(
-                "SELECT endsAtEpochMs FROM focus_sessions WHERE status = 'ACTIVE' LIMIT 1",
+                "SELECT endsAtEpochMs FROM focus_sessions WHERE status = 'ACTIVE' ORDER BY startedAtEpochMs DESC LIMIT 1",
                 null
             )
             var targetEpoch = 0L
@@ -20,8 +32,10 @@ class NativeDbHelper(context: Context) : SQLiteOpenHelper(context, "focusguard.d
                 targetEpoch = cursor.getLong(0)
             }
             cursor.close()
+            db.close()
             targetEpoch
         } catch (_: Exception) {
+            try { db.close() } catch (_: Exception) {}
             0L
         }
     }

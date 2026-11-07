@@ -2,48 +2,29 @@ package com.coder7575.sleepguard.enforcer
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteOpenHelper
+import java.io.File
 
-class FocusDatabaseHelper(context: Context) : SQLiteOpenHelper(context, "focusguard.db", null, 1) {
-    override fun onConfigure(db: SQLiteDatabase) {
-        super.onConfigure(db)
-        db.enableWriteAheadLogging()
-    }
+class FocusDatabaseHelper(private val context: Context) {
 
-    override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("""
-            CREATE TABLE IF NOT EXISTS focus_sessions (
-                id TEXT PRIMARY KEY NOT NULL,
-                startedAtEpochMs INTEGER NOT NULL,
-                endsAtEpochMs INTEGER NOT NULL,
-                durationMs INTEGER NOT NULL,
-                type TEXT NOT NULL,
-                status TEXT NOT NULL
+    private fun getReadableDatabase(): SQLiteDatabase? {
+        val dbFile = File(context.filesDir, "SQLite/focusguard.db")
+        if (!dbFile.exists()) return null
+        return try {
+            SQLiteDatabase.openDatabase(
+                dbFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS
             )
-        """.trimIndent())
-
-        db.execSQL("""
-            CREATE TABLE IF NOT EXISTS focus_schedules (
-                id TEXT PRIMARY KEY NOT NULL,
-                name TEXT NOT NULL,
-                startHour INTEGER NOT NULL,
-                startMinute INTEGER NOT NULL,
-                endHour INTEGER NOT NULL,
-                endMinute INTEGER NOT NULL,
-                daysOfWeek TEXT NOT NULL,
-                isEnabled INTEGER NOT NULL,
-                createdAtEpochMs INTEGER NOT NULL
-            )
-        """.trimIndent())
+        } catch (_: Exception) {
+            null
+        }
     }
-
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
 
     fun getActiveSessionEndsAt(): Long {
+        val db = getReadableDatabase() ?: return 0L
         return try {
-            val db = readableDatabase
             val cursor = db.rawQuery(
-                "SELECT endsAtEpochMs FROM focus_sessions WHERE status = 'ACTIVE' LIMIT 1",
+                "SELECT endsAtEpochMs FROM focus_sessions WHERE status = 'ACTIVE' ORDER BY startedAtEpochMs DESC LIMIT 1",
                 null
             )
             var targetEpoch = 0L
@@ -51,8 +32,10 @@ class FocusDatabaseHelper(context: Context) : SQLiteOpenHelper(context, "focusgu
                 targetEpoch = cursor.getLong(0)
             }
             cursor.close()
+            db.close()
             targetEpoch
         } catch (_: Exception) {
+            try { db.close() } catch (_: Exception) {}
             0L
         }
     }

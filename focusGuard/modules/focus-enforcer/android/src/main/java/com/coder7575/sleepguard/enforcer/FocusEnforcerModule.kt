@@ -17,14 +17,17 @@ class FocusEnforcerModule : Module() {
         // Start active focus lock
         Function("startFocusLock") { endsAtEpochMs: Double ->
             val context = appContext.reactContext ?: return@Function false
-            FocusForegroundService.start(context, endsAtEpochMs.toLong())
-            AlarmCoordinator.scheduleSessionCompletion(context, endsAtEpochMs.toLong())
+            val epoch = endsAtEpochMs.toLong()
+            FocusAccessibilityService.activeSessionEndsAt = epoch
+            FocusForegroundService.start(context, epoch)
+            AlarmCoordinator.scheduleSessionCompletion(context, epoch)
             true
         }
 
         // Stop active focus lock
         Function("stopFocusLock") {
             val context = appContext.reactContext ?: return@Function false
+            FocusAccessibilityService.activeSessionEndsAt = 0L
             FocusForegroundService.stop(context)
             AlarmCoordinator.cancelSessionCompletion(context)
             true
