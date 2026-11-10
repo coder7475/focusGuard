@@ -101,6 +101,60 @@ module.exports = function withFocusEnforcer(config) {
       }
     });
 
+    // Package Visibility Queries (Android 11+ / API 30+)
+    if (!androidManifest.queries) {
+      androidManifest.queries = [];
+    }
+    if (androidManifest.queries.length === 0) {
+      androidManifest.queries.push({});
+    }
+
+    const queriesObj = androidManifest.queries[0];
+    if (!queriesObj.intent) queriesObj.intent = [];
+    if (!queriesObj.package) queriesObj.package = [];
+
+    const hasHomeIntent = queriesObj.intent.some((i) =>
+      i.action?.some((a) => a.$ && a.$['android:name'] === 'android.intent.action.MAIN') &&
+      i.category?.some((c) => c.$ && c.$['android:name'] === 'android.intent.category.HOME')
+    );
+    if (!hasHomeIntent) {
+      queriesObj.intent.push({
+        action: [{ $: { 'android:name': 'android.intent.action.MAIN' } }],
+        category: [{ $: { 'android:name': 'android.intent.category.HOME' } }],
+      });
+    }
+
+    const hasDialIntent = queriesObj.intent.some((i) =>
+      i.action?.some((a) => a.$ && a.$['android:name'] === 'android.intent.action.DIAL')
+    );
+    if (!hasDialIntent) {
+      queriesObj.intent.push({
+        action: [{ $: { 'android:name': 'android.intent.action.DIAL' } }],
+      });
+    }
+
+    const hasSmsIntent = queriesObj.intent.some((i) =>
+      i.action?.some((a) => a.$ && a.$['android:name'] === 'android.intent.action.SENDTO')
+    );
+    if (!hasSmsIntent) {
+      queriesObj.intent.push({
+        action: [{ $: { 'android:name': 'android.intent.action.SENDTO' } }],
+        data: [{ $: { 'android:scheme': 'smsto' } }],
+      });
+    }
+
+    const targetOemPackages = [
+      'com.transsion.XOSLauncher',
+      'com.transsion.hilauncher',
+      'com.transsion.smartcaller',
+    ];
+    targetOemPackages.forEach((pkgName) => {
+      const exists = queriesObj.package.some((p) => p.$ && p.$['android:name'] === pkgName);
+      if (!exists) {
+        queriesObj.package.push({ $: { 'android:name': pkgName } });
+      }
+    });
+
     return config;
   });
 

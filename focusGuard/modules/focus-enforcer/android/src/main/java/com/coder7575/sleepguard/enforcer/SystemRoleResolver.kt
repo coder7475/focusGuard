@@ -48,6 +48,9 @@ open class SystemRoleResolver(private val context: Context) {
         // Own package
         if (pkg == context.packageName) return true
 
+        // Core system UI surfaces
+        if (SYSTEM_UI_PACKAGES.contains(pkg)) return true
+
         // Default dynamic roles
         val defaultDialer = getDefaultDialerPackage()
         if (defaultDialer != null && pkg == defaultDialer) return true
@@ -57,6 +60,11 @@ open class SystemRoleResolver(private val context: Context) {
 
         val defaultLauncher = getDefaultLauncherPackage()
         if (defaultLauncher != null && pkg == defaultLauncher) return true
+
+        // Known OEM Launchers
+        if (OEM_LAUNCHER_PACKAGES.contains(pkg)) {
+            return true
+        }
 
         // Known OEM Dialers / In-Call UI
         if (OEM_DIALER_PACKAGES.contains(pkg) || pkg.contains("dialer") || pkg.contains("incall")) {
@@ -71,7 +79,16 @@ open class SystemRoleResolver(private val context: Context) {
         return false
     }
 
+    fun isSystemUi(pkg: String): Boolean {
+        return SYSTEM_UI_PACKAGES.contains(pkg)
+    }
+
     companion object {
+        val SYSTEM_UI_PACKAGES = setOf(
+            "com.android.systemui",
+            "android"
+        )
+
         val OEM_DIALER_PACKAGES = setOf(
             "com.google.android.dialer",
             "com.android.dialer",
@@ -79,7 +96,8 @@ open class SystemRoleResolver(private val context: Context) {
             "com.android.server.telecom",
             "com.android.incallui",
             "com.google.android.incallui",
-            "com.oneplus.dialer"
+            "com.oneplus.dialer",
+            "com.transsion.smartcaller"
         )
 
         val OEM_EMERGENCY_PACKAGES = setOf(
@@ -101,7 +119,9 @@ open class SystemRoleResolver(private val context: Context) {
             "com.miui.home",
             "com.huawei.android.launcher",
             "com.oppo.launcher",
-            "com.bbk.launcher2"
+            "com.bbk.launcher2",
+            "com.transsion.XOSLauncher",
+            "com.transsion.hilauncher"
         )
     }
 }

@@ -7,7 +7,7 @@ Renders an un-dismissible, full-screen overlay over blocked applications during 
 ## Requirements
 
 ### Requirement: Full-Screen Lock Overlay Window
-The system SHALL display an un-dismissible full-screen accessibility overlay window over non-allowlisted applications during active focus sessions.
+The system SHALL display an un-dismissible full-screen accessibility overlay window over non-allowlisted applications during active focus sessions with non-focusable input isolation.
 
 #### Scenario: Display overlay over blocked application
 - **WHEN** a focus session is active and the foreground package does not belong to the allowlist
@@ -24,6 +24,10 @@ The system SHALL display an un-dismissible full-screen accessibility overlay win
 #### Scenario: Modal touch capture without touch leakage
 - **WHEN** user taps, scrolls, or performs gestures anywhere on the screen while the lock overlay is displayed
 - **THEN** window flags MUST omit not-touch-modal flags so that the window acts as a true modal barrier consuming all pointer events
+
+#### Scenario: Non-focusable window surface to suppress accessibility feedback loops
+- **WHEN** the lock overlay window is initialized and attached to the system window manager
+- **THEN** layout parameters MUST include FLAG_NOT_FOCUSABLE so the window absorbs touch events without stealing top-level window focus or triggering recurring window transition events
 
 #### Scenario: Prevent overlay self-dismissal and crash recovery
 - **WHEN** the overlay window view transitions or receives focus updates

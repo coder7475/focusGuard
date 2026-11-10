@@ -36,6 +36,19 @@ class FocusAccessibilityService : AccessibilityService() {
             return
         }
 
+        // 1. Prevent self-dismissal when overlay window itself fires window events
+        if (targetPkg == packageName) {
+            val className = event.className?.toString()
+            val isMainActivity = className != null && (
+                className == "$packageName.MainActivity" ||
+                className.endsWith(".MainActivity")
+            )
+            if (!isMainActivity) {
+                // Event originates from our overlay layout/window, NOT MainActivity. Drop to prevent loop.
+                return
+            }
+        }
+
         // Avoid re-evaluating unchanged package states when overlay is already showing AND session is active
         val now = System.currentTimeMillis()
         if (targetPkg == lastTargetPackage && overlayManager.isVisible && activeSessionEndsAt > now) {
@@ -43,7 +56,12 @@ class FocusAccessibilityService : AccessibilityService() {
         }
         lastTargetPackage = targetPkg
 
-        // Check if package is allowed (own app, dialer, sms, emergency, launcher)
+        // 2. Ignore transient system surfaces (e.g. status bar, notification shade, volume dialogs)
+        if (roleResolver.isSystemUi(targetPkg)) {
+            return
+        }
+
+        // Check if package is allowed (own app MainActivity, dialer, sms, emergency, launcher)
         if (roleResolver.isAllowlisted(targetPkg)) {
             overlayManager.hideOverlay()
             return
