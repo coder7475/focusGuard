@@ -70,10 +70,10 @@ sequenceDiagram
 
 ### 3.1 Root Cause 1 (Primary): Omission of Self-Dismissal Guard in `FocusAccessibilityService.kt`
 
-In the original working native Kotlin codebase (`archive/kotlin-jav`), [`FocusGuardAccessibilityService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/archive/kotlin-jav/app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt#L92-L99) contained explicit guard logic:
+In the working native Kotlin codebase (`kotlin-jav`), [`FocusGuardAccessibilityService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/kotlin-jav/app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt#L92-L99) contained explicit guard logic:
 
 ```kotlin
-// Working reference (archive/kotlin-jav):
+// Working reference (kotlin-jav):
 // 3. Prevent self-dismissal when overlay window itself fires window events
 if (targetPackage == packageName) {
     val isMainActivity = className == MainActivity::class.java.name

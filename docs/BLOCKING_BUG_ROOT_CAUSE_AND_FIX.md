@@ -2,7 +2,7 @@
 
 > **Audience**: Developers & Maintainers  
 > **Target App**: FocusGuard (`focusGuard`)  
-> **Reference Baseline**: Kotlin Native Version (`archive/kotlin-jav`)  
+> **Reference Baseline**: Kotlin Native Version (`kotlin-jav`)  
 > **Severity**: Critical (Core feature does not function on device)
 
 ---
@@ -20,7 +20,7 @@ However, **it does not actually block other apps**. If you leave FocusGuard and 
 
 ## 2. Why Is This Happening? (The Root Causes)
 
-When comparing the React Native/Expo version (`focusGuard`) with the working Kotlin native version (`archive/kotlin-jav`), **four critical flaws** were identified:
+When comparing the React Native/Expo version (`focusGuard`) with the working Kotlin native version (`kotlin-jav`), **four critical flaws** were identified:
 
 ```mermaid
 flowchart TD
@@ -56,7 +56,7 @@ flowchart TD
 ---
 
 ### Cause 2: Native Accessibility Service Is Never Notified in Memory
-In the original native version (`archive/kotlin-jav`), [`FocusGuardAccessibilityService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/archive/kotlin-jav/app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt#L56-L65) maintained a live in-memory reference (`currentActiveSession`) and listened for session updates.
+In the original native version (`kotlin-jav`), [`FocusGuardAccessibilityService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/kotlin-jav/app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt#L56-L65) maintained a live in-memory reference (`currentActiveSession`) and listened for session updates.
 
 In the React Native version:
 - When you tap "Start Focus", `SessionEngine.ts` calls `FocusEnforcer.startFocusLock(endsAtEpochMs)`.
@@ -84,7 +84,7 @@ val params = WindowManager.LayoutParams(
 ---
 
 ### Cause 4: Overly Sensitive App-Switching Logic
-In `archive/kotlin-jav`, [`FocusGuardAccessibilityService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/archive/kotlin-jav/app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt#L93-L106) specifically:
+In `kotlin-jav`, [`FocusGuardAccessibilityService.kt`](file:///home/fahad/AndroidStudioProjects/focusGuard/kotlin-jav/app/src/main/java/com/coder7475/focusguard/service/accessibility/FocusGuardAccessibilityService.kt#L93-L106) specifically:
 1. Ignored null/blank package names.
 2. Ignored events coming from its own overlay window.
 3. Cached `lastTargetPackage` to avoid screen flashing.

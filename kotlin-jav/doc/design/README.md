@@ -3,7 +3,7 @@
 This directory contains the core system architecture designs, domain specifications, and Architecture Decision Records (ADRs) for FocusGuard.
 
 > [!NOTE]
-> These architectural foundations directly power both the archived native Kotlin reference implementation and the active React Native / Expo application (`focusGuard`).
+> These architectural foundations directly power both the native Kotlin Android implementation (`kotlin-jav/`) and the cross-platform React Native / Expo application (`focusGuard/`).
 
 ---
 

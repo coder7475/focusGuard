@@ -1,4 +1,4 @@
-# FocusGuard (Archived Native Reference)
+# FocusGuard (Native Android / Kotlin)
 
 > A privacy-first, uncompromising Android focus lock that eliminates digital distractions and restores your productivity.
 
@@ -11,7 +11,7 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 > [!NOTE]
-> **Archived Reference Implementation**: This pure Kotlin & Jetpack Compose codebase represents the original, battle-tested native Android reference implementation. Active development has transitioned to the universal React Native / Expo SDK 58 application at [**`focusGuard/`**](../../focusGuard/README.md). This directory is preserved for architectural reference, ADR history, and algorithmic parity testing.
+> **Native Kotlin Implementation**: This directory contains the pure native Android implementation of FocusGuard built with Kotlin 2.2, Jetpack Compose (Material 3), Room Database 2.8, and Clean Architecture. It is fully operational and maintained alongside the cross-platform React Native / Expo SDK 58 application at [**`focusGuard/`**](../focusGuard/README.md).
 
 ---
 
@@ -114,7 +114,7 @@ flowchart TD
 
 ### Running via Android Studio
 
-1. Open Android Studio and select **File > Open**, then choose the `archive/kotlin-jav` directory.
+1. Open Android Studio and select **File > Open**, then choose the `kotlin-jav` directory.
 2. Click **Sync Project with Gradle Files** (elephant icon) on the top toolbar.
 3. **Live UI Previews**: Open [`app/src/main/java/com/coder7475/focusguard/ui/home/HomeScreen.kt`](app/src/main/java/com/coder7475/focusguard/ui/home/HomeScreen.kt) and click **Split** to interact with Compose previews directly.
 4. **Deploy to Device**: Connect an Android device with USB debugging enabled (or boot an Android Virtual Device), select it in the target device dropdown, and click **Run 'app'** (`Shift+F10`).
@@ -128,7 +128,7 @@ You can build, test, and package FocusGuard directly from your terminal:
 
 ```bash
 # Navigate to the native Android directory
-cd archive/kotlin-jav
+cd kotlin-jav
 
 # Run unit tests across all layers
 ./gradlew testDebugUnitTest
