@@ -32,9 +32,24 @@ The system SHALL persist recurring focus schedules in the SQLite database with m
 - **WHEN** user toggles an existing schedule
 - **THEN** the system MUST update the isEnabled flag in the database immediately
 
+#### Scenario: Query all configured schedules
+- **WHEN** schedules exist in the database
+- **THEN** schedule queries MUST return all persisted schedules sorted by start time
+
 ### Requirement: Cross-Process Concurrent Database Access
 The system SHALL configure the SQLite database in Write-Ahead Logging mode to allow concurrent safe reads and writes from both the React Native JavaScript environment and native Kotlin background processes.
 
 #### Scenario: Concurrent native and JS database access
 - **WHEN** native background services and the JavaScript UI access the database file simultaneously
 - **THEN** SQLite Write-Ahead Logging MUST prevent database lock errors and ensure transactional integrity
+
+### Requirement: Application Preferences Persistence
+The system SHALL persist key-value flags using persistent preferences storage to preserve onboarding and system guidance states.
+
+#### Scenario: Store onboarding completion flag
+- **WHEN** the user completes initial setup
+- **THEN** the system MUST asynchronously write true to `KEY_ONBOARDING_COMPLETED` and emit the updated state
+
+#### Scenario: Store battery guide dismissal flag
+- **WHEN** the user acknowledges the OEM battery guidance dialog
+- **THEN** the system MUST persist true to `KEY_BATTERY_GUIDE_DISMISSED`

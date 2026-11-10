@@ -70,4 +70,28 @@ class ScheduleTimeFormatterTest {
         assertEquals("10:30 PM", ScheduleTimeFormatter.formatMinuteOfDay(1350))
         assertEquals("11:59 PM", ScheduleTimeFormatter.formatMinuteOfDay(1439))
     }
+
+    @Test
+    fun calculateDurationMinutes_sameDay() {
+        // 9:00 AM (540) to 5:00 PM (1020) = 480 mins (8 hours)
+        val duration = ScheduleTimeFormatter.calculateDurationMinutes(540, 1020)
+        assertEquals(480, duration)
+        assertEquals("8 hrs", ScheduleTimeFormatter.formatDuration(duration))
+    }
+
+    @Test
+    fun calculateDurationMinutes_overnight() {
+        // 10:30 PM (1350) to 7:00 AM (420) = (1440 - 1350) + 420 = 90 + 420 = 510 mins (8 hrs 30 mins)
+        val duration = ScheduleTimeFormatter.calculateDurationMinutes(1350, 420)
+        assertEquals(510, duration)
+        assertEquals("8 hrs 30 mins", ScheduleTimeFormatter.formatDuration(duration))
+    }
+
+    @Test
+    fun calculateDurationMinutes_shortDuration() {
+        // 45 mins
+        val duration = ScheduleTimeFormatter.calculateDurationMinutes(60, 105)
+        assertEquals(45, duration)
+        assertEquals("45 mins", ScheduleTimeFormatter.formatDuration(duration))
+    }
 }

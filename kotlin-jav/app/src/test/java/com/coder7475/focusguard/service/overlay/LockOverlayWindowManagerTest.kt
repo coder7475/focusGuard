@@ -108,4 +108,35 @@ class LockOverlayWindowManagerTest {
         assertFalse(overlayWindowManager.isVisible)
         verify(atLeast = 1) { mockWindowManager.removeView(any()) }
     }
+
+    @Test
+    fun `updateSessionInfo updates session metadata reactively`() {
+        val info = LockSessionInfo(
+            endsAtEpochMs = 123456789L,
+            sessionType = com.coder7475.focusguard.domain.model.SessionType.SCHEDULED,
+            routineName = "Deep Work",
+            timeRangeFormatted = "09:00 AM – 05:00 PM",
+            totalDurationMs = 28800000L
+        )
+        overlayWindowManager.updateSessionInfo(info)
+
+        assertEquals(info, overlayWindowManager.sessionInfo)
+        assertEquals("Deep Work", overlayWindowManager.sessionInfo.routineName)
+        assertEquals(com.coder7475.focusguard.domain.model.SessionType.SCHEDULED, overlayWindowManager.sessionInfo.sessionType)
+    }
+
+    @Test
+    fun `setEndsAtEpochMs updates epoch while preserving other metadata`() {
+        val initial = LockSessionInfo(
+            endsAtEpochMs = 1000L,
+            sessionType = com.coder7475.focusguard.domain.model.SessionType.QUICK,
+            routineName = "Quick Focus",
+            totalDurationMs = 60000L
+        )
+        overlayWindowManager.updateSessionInfo(initial)
+        overlayWindowManager.setEndsAtEpochMs(5000L)
+
+        assertEquals(5000L, overlayWindowManager.sessionInfo.endsAtEpochMs)
+        assertEquals("Quick Focus", overlayWindowManager.sessionInfo.routineName)
+    }
 }

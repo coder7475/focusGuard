@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -36,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +47,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.coder7475.focusguard.domain.engine.ScheduleEngine
@@ -59,6 +62,9 @@ import com.coder7475.focusguard.ui.theme.OffWhite
 import com.coder7475.focusguard.ui.theme.SafetyOrange
 import com.coder7475.focusguard.ui.theme.SignalAmber
 import com.coder7475.focusguard.ui.theme.TextMuted
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.util.Locale
 
@@ -69,7 +75,12 @@ fun SchedulesScreen(
     onScheduleChanged: () -> Unit = {}
 ) {
     val schedules by scheduleRepository.observeAllSchedules().collectAsState(initial = emptyList())
+    val coroutineScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+
     var showAddDialog by remember { mutableStateOf(false) }
+    var scheduleToEdit by remember { mutableStateOf<FocusSchedule?>(null) }
+    var scheduleToDelete by remember { mutableStateOf<FocusSchedule?>(null) }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -99,7 +110,10 @@ fun SchedulesScreen(
                 }
 
                 Button(
-                    onClick = { showAddDialog = true },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showAddDialog = true
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = SafetyOrange),
                     shape = RoundedCornerShape(8.dp)
                 ) {
@@ -148,22 +162,26 @@ fun SchedulesScreen(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth().weight(1f)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
                 ) {
                     items(schedules, key = { it.id }) { schedule ->
                         ScheduleCard(
                             schedule = schedule,
                             onToggle = { isEnabled ->
-                                kotlinx.coroutines.runBlocking {
+                                coroutineScope.launch(Dispatchers.IO) {
                                     scheduleRepository.updateSchedule(schedule.copy(isEnabled = isEnabled))
+                                    withContext(Dispatchers.Main) {
+                                        onScheduleChanged()
+                                    }
                                 }
-                                onScheduleChanged()
+                            },
+                            onEdit = {
+                                scheduleToEdit = schedule
                             },
                             onDelete = {
-                                kotlinx.coroutines.runBlocking {
-                                    scheduleRepository.deleteSchedule(schedule.id)
-                                }
-                                onScheduleChanged()
+                                scheduleToDelete = schedule
                             }
                         )
                     }
@@ -171,11 +189,13 @@ fun SchedulesScreen(
             }
         }
 
+        // Create Routine Dialog
         if (showAddDialog) {
-            AddScheduleDialog(
+            ScheduleConfigDialog(
+                initialSchedule = null,
                 onDismiss = { showAddDialog = false },
                 onConfirm = { name, startMin, endMin, bitmask ->
-                    kotlinx.coroutines.runBlocking {
+                    coroutineScope.launch(Dispatchers.IO) {
                         val schedule = FocusSchedule(
                             name = name,
                             startMinuteOfDay = startMin,
@@ -184,9 +204,53 @@ fun SchedulesScreen(
                             isEnabled = true
                         )
                         scheduleRepository.saveSchedule(schedule)
+                        withContext(Dispatchers.Main) {
+                            showAddDialog = false
+                            onScheduleChanged()
+                        }
                     }
-                    showAddDialog = false
-                    onScheduleChanged()
+                }
+            )
+        }
+
+        // Edit Routine Dialog
+        if (scheduleToEdit != null) {
+            val target = scheduleToEdit!!
+            ScheduleConfigDialog(
+                initialSchedule = target,
+                onDismiss = { scheduleToEdit = null },
+                onConfirm = { name, startMin, endMin, bitmask ->
+                    coroutineScope.launch(Dispatchers.IO) {
+                        val updated = target.copy(
+                            name = name,
+                            startMinuteOfDay = startMin,
+                            endMinuteOfDay = endMin,
+                            daysOfWeekBitmask = bitmask
+                        )
+                        scheduleRepository.updateSchedule(updated)
+                        withContext(Dispatchers.Main) {
+                            scheduleToEdit = null
+                            onScheduleChanged()
+                        }
+                    }
+                }
+            )
+        }
+
+        // Safe Delete Confirmation Dialog
+        if (scheduleToDelete != null) {
+            val target = scheduleToDelete!!
+            DeleteScheduleConfirmationDialog(
+                schedule = target,
+                onDismiss = { scheduleToDelete = null },
+                onConfirm = {
+                    coroutineScope.launch(Dispatchers.IO) {
+                        scheduleRepository.deleteSchedule(target.id)
+                        withContext(Dispatchers.Main) {
+                            scheduleToDelete = null
+                            onScheduleChanged()
+                        }
+                    }
                 }
             )
         }
@@ -197,19 +261,28 @@ fun SchedulesScreen(
 fun ScheduleCard(
     schedule: FocusSchedule,
     onToggle: (Boolean) -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val startFormatted = ScheduleTimeFormatter.formatMinuteOfDay(schedule.startMinuteOfDay)
     val endFormatted = ScheduleTimeFormatter.formatMinuteOfDay(schedule.endMinuteOfDay)
     val timeFormatted = "$startFormatted – $endFormatted"
     val isOvernight = schedule.endMinuteOfDay <= schedule.startMinuteOfDay
+    val durationMinutes = ScheduleTimeFormatter.calculateDurationMinutes(schedule.startMinuteOfDay, schedule.endMinuteOfDay)
+    val durationFormatted = ScheduleTimeFormatter.formatDuration(durationMinutes)
 
     Card(
         colors = CardDefaults.cardColors(containerColor = DarkGunmetal),
         shape = RoundedCornerShape(12.dp),
         border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderDark)),
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onEdit()
+            }
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -217,8 +290,11 @@ fun ScheduleCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Text(
                             text = schedule.name,
                             color = OffWhite,
@@ -226,33 +302,46 @@ fun ScheduleCard(
                             fontWeight = FontWeight.Bold
                         )
                         if (isOvernight) {
-                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "OVERNIGHT",
                                 color = SignalAmber,
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier
                                     .background(SignalAmber.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = timeFormatted,
-                        color = if (schedule.isEnabled) SafetyOrange else TextMuted,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = timeFormatted,
+                            color = if (schedule.isEnabled) SafetyOrange else TextMuted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            text = "($durationFormatted)",
+                            color = TextMuted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(
                         checked = schedule.isEnabled,
-                        onCheckedChange = onToggle,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onToggle(it)
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = MatteCharcoal,
                             checkedTrackColor = SafetyOrange,
@@ -260,8 +349,22 @@ fun ScheduleCard(
                             uncheckedTrackColor = MatteCharcoal
                         )
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(onClick = onDelete) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onEdit()
+                    }) {
+                        Text(
+                            text = "✎",
+                            color = ElectricCyan,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onDelete()
+                    }) {
                         Text(
                             text = "✕",
                             color = DangerRed,
@@ -312,33 +415,52 @@ fun ScheduleCard(
 }
 
 @Composable
-fun AddScheduleDialog(
+fun ScheduleConfigDialog(
+    initialSchedule: FocusSchedule? = null,
     onDismiss: () -> Unit,
     onConfirm: (name: String, startMinute: Int, endMinute: Int, daysBitmask: Int) -> Unit
 ) {
-    var name by remember { mutableStateOf("Deep Work") }
-    var startHour12 by remember { mutableIntStateOf(9) }
-    var startMinute by remember { mutableIntStateOf(0) }
-    var startIsAm by remember { mutableStateOf(true) }
+    val isEdit = initialSchedule != null
+    var name by remember { mutableStateOf(initialSchedule?.name ?: "Deep Work") }
 
-    var endHour12 by remember { mutableIntStateOf(5) }
-    var endMinute by remember { mutableIntStateOf(0) }
-    var endIsAm by remember { mutableStateOf(false) }
+    val initialStart = initialSchedule?.startMinuteOfDay ?: 540 // 9:00 AM default
+    val (initStartHour, initStartMin, initStartAm) = remember(initialSchedule) {
+        ScheduleTimeFormatter.convertMinuteOfDayTo12Hour(initialStart)
+    }
 
-    var daysBitmask by remember { mutableIntStateOf(ScheduleEngine.createWeekdayBitmask(
-        DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
-    )) }
+    val initialEnd = initialSchedule?.endMinuteOfDay ?: 1020 // 5:00 PM default
+    val (initEndHour, initEndMin, initEndAm) = remember(initialSchedule) {
+        ScheduleTimeFormatter.convertMinuteOfDayTo12Hour(initialEnd)
+    }
+
+    var startHour12 by remember { mutableIntStateOf(initStartHour) }
+    var startMinute by remember { mutableIntStateOf(initStartMin) }
+    var startIsAm by remember { mutableStateOf(initStartAm) }
+
+    var endHour12 by remember { mutableIntStateOf(initEndHour) }
+    var endMinute by remember { mutableIntStateOf(initEndMin) }
+    var endIsAm by remember { mutableStateOf(initEndAm) }
+
+    var daysBitmask by remember {
+        mutableIntStateOf(
+            initialSchedule?.daysOfWeekBitmask ?: ScheduleEngine.createWeekdayBitmask(
+                DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
+            )
+        )
+    }
 
     val startTotal = ScheduleTimeFormatter.convert12HourToMinuteOfDay(startHour12, startMinute, startIsAm)
     val endTotal = ScheduleTimeFormatter.convert12HourToMinuteOfDay(endHour12, endMinute, endIsAm)
     val isOvernight = endTotal <= startTotal
+    val durationMinutes = ScheduleTimeFormatter.calculateDurationMinutes(startTotal, endTotal)
+    val durationFormatted = ScheduleTimeFormatter.formatDuration(durationMinutes)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = DarkGunmetal,
         title = {
             Text(
-                text = "CREATE ROUTINE",
+                text = if (isEdit) "EDIT ROUTINE" else "CREATE ROUTINE",
                 color = OffWhite,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -361,30 +483,40 @@ fun AddScheduleDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "TIME RANGE",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (isOvernight) {
+                // Time Range Header & Calculated Duration
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = "OVERNIGHT",
-                            color = SignalAmber,
-                            fontSize = 9.sp,
+                            text = "TIME RANGE",
+                            color = TextMuted,
+                            fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .background(SignalAmber.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                            fontWeight = FontWeight.Bold
                         )
+                        if (isOvernight) {
+                            Text(
+                                text = "OVERNIGHT",
+                                color = SignalAmber,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .background(SignalAmber.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Window: $durationFormatted active lock",
+                        color = ElectricCyan,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
 
                 Row(
@@ -417,13 +549,51 @@ fun AddScheduleDialog(
                     )
                 }
 
-                Text(
-                    text = "ACTIVE DAYS",
-                    color = TextMuted,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ACTIVE DAYS",
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // Quick day presets
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "WEEKDAYS",
+                            color = TextMuted,
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .background(MatteCharcoal, RoundedCornerShape(4.dp))
+                                .border(1.dp, BorderDark, RoundedCornerShape(4.dp))
+                                .clickable {
+                                    daysBitmask = ScheduleEngine.createWeekdayBitmask(
+                                        DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
+                                    )
+                                }
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                        Text(
+                            text = "ALL",
+                            color = TextMuted,
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .background(MatteCharcoal, RoundedCornerShape(4.dp))
+                                .border(1.dp, BorderDark, RoundedCornerShape(4.dp))
+                                .clickable {
+                                    daysBitmask = 0b1111111
+                                }
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                }
 
                 val dayNames = listOf("M", "T", "W", "T", "F", "S", "S")
                 Row(
@@ -466,10 +636,76 @@ fun AddScheduleDialog(
                 onClick = {
                     onConfirm(name, startTotal, endTotal, daysBitmask)
                 },
+                enabled = name.isNotBlank() && daysBitmask != 0,
                 colors = ButtonDefaults.buttonColors(containerColor = SafetyOrange),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("SAVE ROUTINE", color = MatteCharcoal, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (isEdit) "UPDATE ROUTINE" else "SAVE ROUTINE",
+                    color = MatteCharcoal,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark)
+            ) {
+                Text("CANCEL", color = TextMuted, fontFamily = FontFamily.Monospace)
+            }
+        }
+    )
+}
+
+@Composable
+fun DeleteScheduleConfirmationDialog(
+    schedule: FocusSchedule,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = DarkGunmetal,
+        title = {
+            Text(
+                text = "DELETE ROUTINE?",
+                color = DangerRed,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Are you sure you want to delete '${schedule.name}'?",
+                    color = OffWhite,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "All scheduled alarms for this routine will be cancelled immediately.",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = "DELETE",
+                    color = OffWhite,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         dismissButton = {
@@ -492,23 +728,28 @@ fun TimePickerSelector(
     isAm: Boolean,
     onTimeChanged: (hour12: Int, minute: Int, isAm: Boolean) -> Unit
 ) {
+    var showDirectMinuteDialog by remember { mutableStateOf(false) }
+    var showDirectHourDialog by remember { mutableStateOf(false) }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
             color = TextMuted,
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            NumberSpinner(
+            TimeStepper(
                 value = hour12,
                 min = 1,
                 max = 12,
-                onValueChange = { onTimeChanged(it, minute, isAm) }
+                onValueChange = { onTimeChanged(it, minute, isAm) },
+                onDirectInputClick = { showDirectHourDialog = true }
             )
             Text(
                 text = ":",
@@ -516,12 +757,12 @@ fun TimePickerSelector(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
-            NumberSpinner(
+            TimeStepper(
                 value = minute,
                 min = 0,
-                max = 55,
-                step = 5,
-                onValueChange = { onTimeChanged(hour12, it, isAm) }
+                max = 59,
+                onValueChange = { onTimeChanged(hour12, it, isAm) },
+                onDirectInputClick = { showDirectMinuteDialog = true }
             )
             Spacer(modifier = Modifier.width(2.dp))
             AmPmToggle(
@@ -529,7 +770,202 @@ fun TimePickerSelector(
                 onAmPmChanged = { onTimeChanged(hour12, minute, it) }
             )
         }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Quick minute preset chips + custom button
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf(0, 15, 30, 45).forEach { presetMin ->
+                val isSelected = minute == presetMin
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .background(if (isSelected) SafetyOrange.copy(alpha = 0.2f) else MatteCharcoal, RoundedCornerShape(3.dp))
+                        .border(1.dp, if (isSelected) SafetyOrange else BorderDark, RoundedCornerShape(3.dp))
+                        .clickable { onTimeChanged(hour12, presetMin, isAm) }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = String.format(Locale.US, ":%02d", presetMin),
+                        color = if (isSelected) SafetyOrange else TextMuted,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
     }
+
+    if (showDirectHourDialog) {
+        DirectTimeInputDialog(
+            title = "SET HOUR (1–12)",
+            initialValue = hour12,
+            range = 1..12,
+            onDismiss = { showDirectHourDialog = false },
+            onConfirm = {
+                onTimeChanged(it, minute, isAm)
+                showDirectHourDialog = false
+            }
+        )
+    }
+
+    if (showDirectMinuteDialog) {
+        DirectTimeInputDialog(
+            title = "SET MINUTE (0–59)",
+            initialValue = minute,
+            range = 0..59,
+            onDismiss = { showDirectMinuteDialog = false },
+            onConfirm = {
+                onTimeChanged(hour12, it, isAm)
+                showDirectMinuteDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun TimeStepper(
+    value: Int,
+    min: Int,
+    max: Int,
+    onValueChange: (Int) -> Unit,
+    onDirectInputClick: () -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        // Increment button
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(width = 36.dp, height = 20.dp)
+                .background(DarkGunmetal, RoundedCornerShape(4.dp))
+                .border(1.dp, BorderDark, RoundedCornerShape(4.dp))
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val next = if (value >= max) min else value + 1
+                    onValueChange(next)
+                }
+        ) {
+            Text("▲", color = SafetyOrange, fontSize = 9.sp)
+        }
+
+        // Value display (tapping opens direct numeric input)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(width = 36.dp, height = 30.dp)
+                .background(MatteCharcoal, RoundedCornerShape(6.dp))
+                .border(1.dp, BorderDark, RoundedCornerShape(6.dp))
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onDirectInputClick()
+                }
+        ) {
+            Text(
+                text = String.format(Locale.US, "%02d", value),
+                color = OffWhite,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Decrement button
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(width = 36.dp, height = 20.dp)
+                .background(DarkGunmetal, RoundedCornerShape(4.dp))
+                .border(1.dp, BorderDark, RoundedCornerShape(4.dp))
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val next = if (value <= min) max else value - 1
+                    onValueChange(next)
+                }
+        ) {
+            Text("▼", color = SafetyOrange, fontSize = 9.sp)
+        }
+    }
+}
+
+@Composable
+fun DirectTimeInputDialog(
+    title: String,
+    initialValue: Int,
+    range: IntRange,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var text by remember { mutableStateOf(initialValue.toString()) }
+    val parsed = text.toIntOrNull()
+    val isValid = parsed != null && parsed in range
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = DarkGunmetal,
+        title = {
+            Text(
+                text = title,
+                color = OffWhite,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+        },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { input ->
+                        val digits = input.filter { it.isDigit() }.take(2)
+                        text = digits
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SafetyOrange,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = OffWhite,
+                        unfocusedTextColor = OffWhite
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Valid range: ${range.first} – ${range.last}",
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (isValid) onConfirm(parsed!!) },
+                enabled = isValid,
+                colors = ButtonDefaults.buttonColors(containerColor = SafetyOrange),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("SET", color = MatteCharcoal, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark)
+            ) {
+                Text("CANCEL", color = TextMuted, fontFamily = FontFamily.Monospace)
+            }
+        }
+    )
 }
 
 @Composable
@@ -589,37 +1025,5 @@ fun AmPmToggle(
                 fontSize = 10.sp
             )
         }
-    }
-}
-
-@Composable
-private fun NumberSpinner(
-    value: Int,
-    min: Int = 0,
-    max: Int,
-    step: Int = 1,
-    onValueChange: (Int) -> Unit
-) {
-    val haptic = LocalHapticFeedback.current
-
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .background(MatteCharcoal, RoundedCornerShape(6.dp))
-            .border(1.dp, BorderDark, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-            .clickable {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                val next = if (value + step > max) min else value + step
-                onValueChange(next)
-            }
-    ) {
-        Text(
-            text = String.format(Locale.US, "%02d", value),
-            color = OffWhite,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold
-        )
     }
 }

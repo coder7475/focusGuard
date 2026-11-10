@@ -29,16 +29,28 @@ The system SHALL register an Accessibility Service to capture foreground window 
 - **WHEN** the lock overlay is already visible, the active session timestamp has not elapsed, and an incoming event matches the currently active target or host overlay window
 - **THEN** the accessibility service MUST maintain overlay presentation and suppress redundant dismiss or show calls
 
+#### Scenario: Suppress redundant window state evaluations
+- **WHEN** a received package matches the previous target package and the overlay is already displayed
+- **THEN** the accessibility service MUST suppress re-evaluation to prevent oscillation
+
 #### Scenario: In-memory session synchronization and database fallback
 - **WHEN** an active focus session is initiated or terminated
 - **THEN** the accessibility service MUST evaluate active enforcement state via real-time in-memory epoch cache and fallback to the verified SQLite database directory
 
 ### Requirement: Dynamic Allowlist Resolution
-The system SHALL dynamically resolve and permit system-critical applications including the default phone dialer, emergency packages, default SMS, default home launcher, and core platform UI surfaces.
+The system SHALL dynamically resolve and permit system-critical applications including the default phone dialer, emergency packages, default SMS, default home launcher, and core platform UI surfaces without requiring `QUERY_ALL_PACKAGES` permission.
 
 #### Scenario: Resolve and allow default phone dialer
 - **WHEN** a focus session is active and the foreground package matches the system default dialer package
 - **THEN** the enforcer MUST allow the application without triggering the lock overlay
+
+#### Scenario: Resolve and allow default SMS messaging
+- **WHEN** a focus session is active and the foreground package matches the system default SMS application
+- **THEN** the enforcer MUST allow the application without triggering the lock overlay
+
+#### Scenario: Resolve and allow default home launcher
+- **WHEN** a focus session is active and the foreground package matches the resolved default home launcher
+- **THEN** the enforcer MUST treat the launcher as allowlisted and prevent lock overlay cycling
 
 #### Scenario: Allow emergency numbers and dialer actions
 - **WHEN** the user initiates an emergency call or navigates to the emergency call interface
@@ -59,3 +71,22 @@ The system SHALL dynamically resolve and permit system-critical applications inc
 #### Scenario: Block non-allowlisted third-party application
 - **WHEN** a focus session is active and a non-allowlisted package enters the foreground
 - **THEN** the enforcer MUST trigger the full-screen lock overlay within 100ms
+
+### Requirement: Allowlist Policy Access Evaluation
+The system SHALL evaluate application package names against emergency, system role, default launcher, and own-package allowlists to determine access eligibility.
+
+#### Scenario: Allow phone and dialer interactions
+- **WHEN** the foreground package matches the resolved default dialer or OEM emergency dialer
+- **THEN** the system MUST evaluate access as ALLOWED
+
+#### Scenario: Allow SMS and messaging interactions
+- **WHEN** the foreground package matches the resolved default SMS application
+- **THEN** the system MUST evaluate access as ALLOWED
+
+#### Scenario: Allow FocusGuard own application
+- **WHEN** the foreground package matches the FocusGuard host package
+- **THEN** the system MUST evaluate access as ALLOWED
+
+#### Scenario: Block third-party applications during active session
+- **WHEN** the foreground package belongs to a non-allowlisted third-party application during an active session
+- **THEN** the system MUST evaluate access as BLOCKED

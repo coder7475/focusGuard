@@ -5,6 +5,9 @@ import android.graphics.PixelFormat
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import com.coder7475.focusguard.ui.theme.FocusGuardTheme
@@ -24,10 +27,15 @@ open class LockOverlayWindowManager(
     var isVisible: Boolean = false
         private set
 
-    private var endsAtEpochMs: Long = 0L
+    var sessionInfo: LockSessionInfo by mutableStateOf(LockSessionInfo())
+        private set
 
     fun setEndsAtEpochMs(epochMs: Long) {
-        endsAtEpochMs = epochMs
+        sessionInfo = sessionInfo.copy(endsAtEpochMs = epochMs)
+    }
+
+    fun updateSessionInfo(info: LockSessionInfo) {
+        sessionInfo = info
     }
 
     private fun createLayoutParams(): WindowManager.LayoutParams {
@@ -62,7 +70,7 @@ open class LockOverlayWindowManager(
                 setContent {
                     FocusGuardTheme {
                         LockOverlayScreen(
-                            endsAtEpochMsProvider = { endsAtEpochMs },
+                            sessionInfoProvider = { sessionInfo },
                             onEmergencyClick = onEmergencyClick
                         )
                     }

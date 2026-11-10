@@ -47,4 +47,30 @@ object ScheduleTimeFormatter {
         val period = if (isAm) "AM" else "PM"
         return String.format(Locale.US, "%02d:%02d %s", hour12, minute, period)
     }
+
+    /**
+     * Calculates duration in minutes between start and end minute-of-day, handling overnight windows.
+     */
+    fun calculateDurationMinutes(startMinuteOfDay: Int, endMinuteOfDay: Int): Int {
+        val startClamped = startMinuteOfDay.coerceIn(0, 1439)
+        val endClamped = endMinuteOfDay.coerceIn(0, 1439)
+        return if (endClamped >= startClamped) {
+            endClamped - startClamped
+        } else {
+            (1440 - startClamped) + endClamped
+        }
+    }
+
+    /**
+     * Formats a duration in minutes into a human-readable string (e.g. "8 hrs 30 mins", "45 mins").
+     */
+    fun formatDuration(durationMinutes: Int): String {
+        val hours = durationMinutes / 60
+        val minutes = durationMinutes % 60
+        return when {
+            hours > 0 && minutes > 0 -> "${hours} hr${if (hours > 1) "s" else ""} ${minutes} min${if (minutes > 1) "s" else ""}"
+            hours > 0 -> "${hours} hr${if (hours > 1) "s" else ""}"
+            else -> "${minutes} min${if (minutes > 1) "s" else ""}"
+        }
+    }
 }

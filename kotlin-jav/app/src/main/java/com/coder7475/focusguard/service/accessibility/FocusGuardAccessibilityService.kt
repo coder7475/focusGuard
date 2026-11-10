@@ -6,20 +6,27 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.coder7475.focusguard.MainActivity
 import com.coder7475.focusguard.data.local.FocusGuardDatabase
+import com.coder7475.focusguard.data.repository.RoomScheduleRepository
 import com.coder7475.focusguard.data.repository.RoomSessionRepository
+import com.coder7475.focusguard.domain.engine.ScheduleEngine
 import com.coder7475.focusguard.domain.model.AccessDecision
 import com.coder7475.focusguard.domain.model.FocusSession
 import com.coder7475.focusguard.domain.model.SessionStatus
+import com.coder7475.focusguard.domain.model.SessionType
 import com.coder7475.focusguard.domain.policy.AllowlistPolicy
+import com.coder7475.focusguard.domain.repository.ScheduleRepository
 import com.coder7475.focusguard.domain.repository.SessionRepository
 import com.coder7475.focusguard.platform.role.SystemRoleResolver
 import com.coder7475.focusguard.service.overlay.LockOverlayWindowManager
+import com.coder7475.focusguard.service.overlay.LockSessionInfo
+import com.coder7475.focusguard.ui.schedule.ScheduleTimeFormatter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class FocusGuardAccessibilityService : AccessibilityService() {
 
@@ -33,6 +40,9 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         internal set
 
     private lateinit var sessionRepository: SessionRepository
+    private lateinit var scheduleRepository: ScheduleRepository
+    private val scheduleEngine = ScheduleEngine()
+
     var currentActiveSession: FocusSession? = null
         internal set
 
@@ -52,12 +62,35 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
         val db = FocusGuardDatabase.getInstance(this)
         sessionRepository = RoomSessionRepository(db.sessionDao())
+        scheduleRepository = RoomScheduleRepository(db.scheduleDao())
 
         serviceScope.launch {
             sessionRepository.observeActiveSession().collectLatest { session ->
                 currentActiveSession = session
                 if (session != null && session.status == SessionStatus.ACTIVE) {
-                    overlayManager.setEndsAtEpochMs(session.endsAtEpochMs)
+                    val (routineName, timeRange) = if (session.type == SessionType.SCHEDULED) {
+                        withContext(Dispatchers.IO) {
+                            val enabled = scheduleRepository.getEnabledSchedules()
+                            val active = enabled.firstOrNull { scheduleEngine.isInsideScheduleWindow(it) }
+                            val name = active?.name ?: "Focus Routine"
+                            val range = active?.let {
+                                "${ScheduleTimeFormatter.formatMinuteOfDay(it.startMinuteOfDay)} – ${ScheduleTimeFormatter.formatMinuteOfDay(it.endMinuteOfDay)}"
+                            }
+                            Pair(name, range)
+                        }
+                    } else {
+                        Pair("Quick Focus", null)
+                    }
+
+                    overlayManager.updateSessionInfo(
+                        LockSessionInfo(
+                            endsAtEpochMs = session.endsAtEpochMs,
+                            sessionType = session.type,
+                            routineName = routineName,
+                            timeRangeFormatted = timeRange,
+                            totalDurationMs = session.durationMs
+                        )
+                    )
                 } else {
                     overlayManager.hideOverlay()
                 }
