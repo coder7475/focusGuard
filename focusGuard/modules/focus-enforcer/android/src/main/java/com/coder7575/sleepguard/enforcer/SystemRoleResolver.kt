@@ -79,8 +79,7 @@ open class SystemRoleResolver(private val context: Context) {
             "com.android.server.telecom",
             "com.android.incallui",
             "com.google.android.incallui",
-            "com.oneplus.dialer",
-            "com.miui.home"
+            "com.oneplus.dialer"
         )
 
         val OEM_EMERGENCY_PACKAGES = setOf(

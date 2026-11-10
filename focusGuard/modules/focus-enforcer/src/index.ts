@@ -5,6 +5,7 @@ export type PermissionType = 'ACCESSIBILITY' | 'EXACT_ALARM' | 'BATTERY' | 'OVER
 export interface FocusEnforcerNative {
   startFocusLock(endsAtEpochMs: number): boolean;
   stopFocusLock(): boolean;
+  rescheduleRoutines(): boolean;
   getPermissionStatus(permissionName: PermissionType): boolean;
   openSettingsForPermission(permissionName: PermissionType): boolean;
   openEmergencyDialer(): boolean;
@@ -19,6 +20,7 @@ try {
   nativeModule = {
     startFocusLock: () => true,
     stopFocusLock: () => true,
+    rescheduleRoutines: () => true,
     getPermissionStatus: () => true,
     openSettingsForPermission: () => true,
     openEmergencyDialer: () => true,

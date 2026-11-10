@@ -38,12 +38,14 @@ flowchart TD
         AlarmMgr --> AlarmRecv["AlarmReceiver"]
         Boot["BootReceiver"] --> BootRecv["BOOT_COMPLETED Reconciliation"]
         
-        DB["FocusDatabaseHelper / NativeDbHelper"] --> Access
+        DB["NativeDbHelper"] --> Access
         DB --> BootRecv
+        Sched["ScheduleCoordinator"] --> AlarmMgr
     end
 
     API --> Ticker
     API --> Alarm
+    API --> Sched
 ```
 
 ### Component Breakdown
@@ -53,11 +55,12 @@ flowchart TD
 | **`FocusEnforcerModule.kt`** | JavaScript Bridge | Implements the modern Expo Kotlin Modules API (`expo.modules.kotlin.modules.Module`). Dispatches settings intents and bridges lock commands. |
 | **`FocusAccessibilityService.kt`** | Window Interception | Detects `TYPE_WINDOW_STATE_CHANGED` events within 100ms. Configured with `canRetrieveWindowContent = false` for zero screen inspection. |
 | **`LockOverlayWindowManager.kt`** | Un-Dismissible Barrier | Injects a full-screen `TYPE_ACCESSIBILITY_OVERLAY` view surface directly into the Android `WindowManager`. Swallows all back, home, and touch gestures. |
-| **`FocusForegroundService.kt`** | State & Ticker Preservation | Runs an active `specialUse` foreground service with persistent notification countdown updates (`MM:SS`). |
+| **`FocusForegroundService.kt`** | State & Ticker Preservation | Runs an active `specialUse` foreground service with native chronometer countdown (`setUsesChronometer(true)`). |
 | **`AlarmCoordinator.kt`** | Exact Timing | Registers exact wall-clock alarms with `setExactAndAllowWhileIdle` to guarantee session completion survives deep Doze. |
-| **`BootReceiver.kt`** | Crash & Reboot Recovery | Catches `BOOT_COMPLETED` and `LOCKED_BOOT_COMPLETED` broadcasts to re-arm active sessions before the user opens any app. |
+| **`ScheduleCoordinator.kt`** | Routine Automation | Evaluates active/upcoming schedule windows and registers exact alarms for background routine onset and recurrence. |
+| **`BootReceiver.kt`** | Crash & Reboot Recovery | Catches `BOOT_COMPLETED` and `LOCKED_BOOT_COMPLETED` broadcasts to re-arm active sessions and reschedule routines on device boot. |
 | **`SystemRoleResolver.kt`** | Safe Communication | Dynamically queries `TelecomManager` and `Telephony.Sms` to whitelist default phone and emergency numbers without requiring invasive `QUERY_ALL_PACKAGES` permissions. |
-| **`FocusDatabaseHelper.kt`** | Native Persistence | Directly queries the shared SQLite WAL database file (`focusguard.db`) on the native side during boot and background alarm events without waking the React Native engine. |
+| **`NativeDbHelper.kt`** | Native Persistence | Directly queries the shared SQLite WAL database file (`focusguard.db`) on the native side during boot and background alarm events without waking the React Native engine. |
 
 ---
 

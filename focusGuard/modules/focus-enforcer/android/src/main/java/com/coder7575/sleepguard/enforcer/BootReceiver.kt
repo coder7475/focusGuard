@@ -10,9 +10,11 @@ class BootReceiver : BroadcastReceiver() {
         if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_LOCKED_BOOT_COMPLETED) {
             val activeTarget = NativeDbHelper(context).getActiveSessionEndsAt()
             if (activeTarget > System.currentTimeMillis()) {
+                FocusAccessibilityService.activeSessionEndsAt = activeTarget
                 FocusForegroundService.start(context, activeTarget)
                 AlarmCoordinator.scheduleSessionCompletion(context, activeTarget)
             }
+            ScheduleCoordinator.evaluateAndScheduleNext(context)
         }
     }
 }

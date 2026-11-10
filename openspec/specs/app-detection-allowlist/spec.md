@@ -21,6 +21,10 @@ The system SHALL register an Accessibility Service to capture foreground window 
 - **WHEN** an accessibility event is not a window state change or contains a blank package name
 - **THEN** the accessibility service MUST ignore the event without altering overlay visibility state
 
+#### Scenario: In-memory session synchronization and database fallback
+- **WHEN** an active focus session is initiated or terminated
+- **THEN** the accessibility service MUST evaluate active enforcement state via real-time in-memory epoch cache and fallback to the verified SQLite database directory
+
 ### Requirement: Dynamic Allowlist Resolution
 The system SHALL dynamically resolve and permit system-critical applications including the default phone dialer, emergency packages, default SMS, and the default home launcher.
 

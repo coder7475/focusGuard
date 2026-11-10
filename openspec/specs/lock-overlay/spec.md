@@ -11,7 +11,7 @@ The system SHALL display an un-dismissible full-screen accessibility overlay win
 
 #### Scenario: Display overlay over blocked application
 - **WHEN** a focus session is active and the foreground package does not belong to the allowlist
-- **THEN** the overlay manager MUST present the full-screen overlay window by attaching the view surface to the system window manager within 100ms
+- **THEN** the overlay manager MUST present the full-screen overlay window by attaching the view surface to the system window manager within 100ms without crashing on duplicate additions
 
 #### Scenario: Hide overlay for allowlisted application
 - **WHEN** the foreground package transitions to an allowlisted package
@@ -24,6 +24,10 @@ The system SHALL display an un-dismissible full-screen accessibility overlay win
 #### Scenario: Modal touch capture without touch leakage
 - **WHEN** user taps, scrolls, or performs gestures anywhere on the screen while the lock overlay is displayed
 - **THEN** window flags MUST omit not-touch-modal flags so that the window acts as a true modal barrier consuming all pointer events
+
+#### Scenario: Prevent overlay self-dismissal and crash recovery
+- **WHEN** the overlay window view transitions or receives focus updates
+- **THEN** the window manager MUST maintain valid layout parameters without throwing unhandled view attachment exceptions
 
 ### Requirement: Emergency Dialer Access from Overlay
 The system SHALL provide a dedicated, accessible emergency call button on the lock overlay that launches the device dialer immediately.

@@ -15,14 +15,12 @@ import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
-import java.util.Locale
-import kotlin.math.max
 
 class FocusForegroundService : Service() {
 
     private var endsAtEpochMs: Long = 0L
     private val handler = Handler(Looper.getMainLooper())
-    private var tickerRunnable: Runnable? = null
+    private var completionRunnable: Runnable? = null
 
     private val notificationManager: NotificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -46,13 +44,13 @@ class FocusForegroundService : Service() {
         if (targetEpoch > 0L) {
             endsAtEpochMs = targetEpoch
             startForegroundNotification()
-            startTicker()
+            scheduleCompletion()
         } else {
             val activeTarget = NativeDbHelper(this).getActiveSessionEndsAt()
             if (activeTarget > System.currentTimeMillis()) {
                 endsAtEpochMs = activeTarget
                 startForegroundNotification()
-                startTicker()
+                scheduleCompletion()
             } else {
                 stopSelf()
             }
@@ -63,7 +61,7 @@ class FocusForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterTamperObserver()
-        tickerRunnable?.let { handler.removeCallbacks(it) }
+        completionRunnable?.let { handler.removeCallbacks(it) }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -121,7 +119,7 @@ class FocusForegroundService : Service() {
     }
 
     private fun startForegroundNotification() {
-        val notification = buildTrackerNotification(formatRemainingTime())
+        val notification = buildTrackerNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID_TRACKER,
@@ -133,30 +131,24 @@ class FocusForegroundService : Service() {
         }
     }
 
-    private fun startTicker() {
-        tickerRunnable?.let { handler.removeCallbacks(it) }
-        tickerRunnable = object : Runnable {
-            override fun run() {
-                val remainingMs = endsAtEpochMs - System.currentTimeMillis()
-                if (remainingMs <= 0L) {
-                    onSessionCompleted()
-                } else {
-                    val formatted = formatRemainingTime()
-                    notificationManager.notify(NOTIFICATION_ID_TRACKER, buildTrackerNotification(formatted))
-                    handler.postDelayed(this, 1000L)
-                }
-            }
+    private fun scheduleCompletion() {
+        completionRunnable?.let { handler.removeCallbacks(it) }
+        val remainingMs = endsAtEpochMs - System.currentTimeMillis()
+        if (remainingMs <= 0L) {
+            onSessionCompleted()
+        } else {
+            completionRunnable = Runnable { onSessionCompleted() }
+            handler.postDelayed(completionRunnable!!, remainingMs)
         }
-        handler.post(tickerRunnable!!)
     }
 
     private fun onSessionCompleted() {
-        tickerRunnable?.let { handler.removeCallbacks(it) }
+        completionRunnable?.let { handler.removeCallbacks(it) }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private fun buildTrackerNotification(timeRemaining: String): Notification {
+    private fun buildTrackerNotification(): Notification {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -171,25 +163,16 @@ class FocusForegroundService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID_TRACKER)
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
-            .setContentTitle("SleepGuard Active")
-            .setContentText("Lock active • $timeRemaining remaining")
+            .setContentTitle("FocusGuard Active")
+            .setContentText("Focus lock active")
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+            .setWhen(endsAtEpochMs)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-    }
-
-    private fun formatRemainingTime(): String {
-        val remaining = max(0L, endsAtEpochMs - System.currentTimeMillis())
-        val s = (remaining / 1000L) % 60
-        val m = (remaining / (1000L * 60)) % 60
-        val h = remaining / (1000L * 3600)
-        return if (h > 0) {
-            String.format(Locale.getDefault(), "%02d:%02d:%02d", h, m, s)
-        } else {
-            String.format(Locale.getDefault(), "%02d:%02d", m, s)
-        }
     }
 
     private fun createNotificationChannels() {

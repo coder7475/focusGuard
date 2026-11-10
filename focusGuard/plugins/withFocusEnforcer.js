@@ -142,5 +142,25 @@ module.exports = function withFocusEnforcer(config) {
     }
   ]);
 
+  // 4. Ensure ProGuard keep rules for native enforcer module
+  config = withDangerousMod(config, [
+    'android',
+    async (config) => {
+      const proguardPath = path.join(
+        config.modRequest.platformProjectRoot,
+        'app/proguard-rules.pro'
+      );
+      if (fs.existsSync(proguardPath)) {
+        let content = fs.readFileSync(proguardPath, 'utf8');
+        const rule = '-keep class com.coder7575.sleepguard.enforcer.** { *; }';
+        if (!content.includes(rule)) {
+          content += `\n# FocusGuard Native Enforcer Module\n-keep class com.coder7575.sleepguard.enforcer.** { *; }\n-keepclassmembers class com.coder7575.sleepguard.enforcer.** { *; }\n`;
+          fs.writeFileSync(proguardPath, content);
+        }
+      }
+      return config;
+    }
+  ]);
+
   return config;
 };

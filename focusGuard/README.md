@@ -88,6 +88,20 @@ Once installed on your device or emulator, connect it to your local Metro server
 pnpm run start:dev
 ```
 
+#### Option D: Standalone Preview APK (Autonomous Testing without PC)
+
+Generate a self-contained, standalone `.apk` bundling all JavaScript and native assets:
+
+```bash
+# Cloud EAS preview build (generates direct download link & QR code)
+pnpm run build:preview
+
+# Or local machine preview build
+eas build --profile preview --platform android --local
+```
+
+Once downloaded, follow the [Android APK Installation & Setup Guide](#android-apk-installation--setup-guide) below.
+
 ---
 
 ## Testing Across Environments
@@ -200,30 +214,80 @@ focusGuard/
 
 ---
 
-## Android Permissions & Setup
+## Android APK Installation & Setup Guide
 
-To enforce focus locks reliably, FocusGuard requires four Android system privileges configured via the onboarding wizard ([`src/app/onboarding.tsx`](./src/app/onboarding.tsx)):
+When installing FocusGuard via a standalone `.apk` (such as an EAS Preview build or local build), Android requires explicit permissions to enforce screen blocking and timer precision. Follow this guide to properly install and configure the app.
 
-1. **Accessibility Service (`FocusAccessibilityService`)**:
-   - Intercepts foreground window transitions (`TYPE_WINDOW_STATE_CHANGED`).
-   - Configured with `canRetrieveWindowContent = false` (zero screen inspection, keystroke reading, or content snooping).
-2. **Display Over Other Apps (`SYSTEM_ALERT_WINDOW`)**:
-   - Permits rendering the full-screen lock overlay when a non-allowlisted application enters the foreground.
-3. **Exact Alarms (`SCHEDULE_EXACT_ALARM`)**:
-   - Guarantees precise session wakeups and timer completion even in Android deep Doze power saving.
-4. **Ignore Battery Optimizations (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
-   - Prevents aggressive OEM task killers (Samsung, Xiaomi MIUI/HyperOS, OnePlus) from prematurely terminating background session tickers.
+### 1. Installing the APK
 
-> [!IMPORTANT]
-> **Android 13+ (API 33+) Sideloading Notice — "Restricted Settings"**:
-> If you install FocusGuard via direct APK sideload (outside Google Play), Android 13+ disables Accessibility Services by default, showing a "Restricted setting" dialog.
-> 
-> **To unblock:**
-> 1. Open Android **Settings > Apps > FocusGuard** (or use the in-app button).
-> 2. Tap the **three vertical dots** in the top-right corner.
-> 3. Select **Allow restricted settings**.
-> 4. Verify your biometric or device PIN.
-> 5. Return to FocusGuard and enable the Accessibility Service.
+- **Via Phone Browser / File Manager**: Download the APK file directly to your phone, tap the file in your downloads or notifications, and grant your browser/file manager permission to "Install unknown apps" when prompted.
+- **Via ADB (Command Line)**:
+  ```bash
+  adb install -r focusguard-preview.apk
+  ```
+
+---
+
+### 2. Enabling Accessibility Service & Bypassing "Restricted Settings" (Android 13, 14, & 15)
+
+On modern Android versions, sideloaded APKs are restricted by default for security. When you first attempt to enable Accessibility, Android will display:
+> *"Restricted setting: For your security, this setting is currently unavailable."*
+
+#### Step-by-Step Fix via Device Settings:
+1. **Trigger the restriction once**:
+   - Open **Settings** > **Accessibility** > **Downloaded apps** (or **Installed services**).
+   - Tap **focusGuard** (or **SleepGuard**) and try toggling it on. Tap **OK** when the "Restricted setting" notice pops up. (Android will only show the unlock option after an attempt is made).
+2. **Allow Restricted Settings**:
+   - Return to your Home screen or app drawer.
+   - **Long-press the FocusGuard app icon** and tap **App info** (the `ⓘ` icon).  
+     *(Or go to **Settings** > **Apps** / **App management** > **App list** > **FocusGuard**).*
+   - In the top-right corner of the App Info screen, tap the **three vertical dots (`⋮`)**.
+   - Tap **Allow restricted settings**.
+   - Authenticate with your phone's fingerprint, PIN, or pattern.
+3. **Turn On the Service**:
+   - Return to **Settings** > **Accessibility** > **FocusGuard**.
+   - The toggle is now unlocked. Switch it **ON** and tap **Allow**.
+
+> [!TIP]
+> **Developer ADB Shortcut**: If your phone is connected to your computer via USB debugging, you can bypass the restricted settings dialog instantly with a single command:
+> ```bash
+> adb shell appops set com.coder7575.SleepGuard ACCESS_RESTRICTED_SETTINGS allow
+> ```
+
+---
+
+### 3. Granting Required Permissions
+
+Complete the remaining setup steps in FocusGuard's onboarding wizard ([`src/app/onboarding.tsx`](./src/app/onboarding.tsx)):
+
+1. **Display Over Other Apps (`SYSTEM_ALERT_WINDOW`)**:
+   - Allows FocusGuard to draw the un-dismissible lock overlay over prohibited apps.
+   - Go to **Settings** > **Apps** > **Special app access** > **Display over other apps** > allow **FocusGuard**.
+2. **Exact Alarms (`SCHEDULE_EXACT_ALARM`)**:
+   - Guarantees precise millisecond timer completion and scheduled routines even when the device enters deep Doze mode.
+   - Ensure "Alarms & reminders" permission is granted.
+3. **Ignore Battery Optimizations (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
+   - Choose **Unrestricted** / **Don't optimize** so Android's battery manager does not terminate the background countdown ticker.
+
+---
+
+### 4. OEM-Specific Configurations (Prevent Background Termination)
+
+Custom Android distributions often enforce aggressive background task management that can kill accessibility services. Apply the following settings based on your device manufacturer:
+
+#### Infinix & Tecno (XOS / HiOS):
+- **Auto-Start**: Open the pre-installed **Phone Master** app > **App management** > **Auto-start management** > toggle **FocusGuard** to **ON**.
+- **Battery**: Go to **App Info** > **Battery** / **Power consumption management** > select **Unrestricted**.
+- **Lock in Recent Apps**: Open your recent apps screen, tap the drop-down or menu on FocusGuard's card, and tap the **Lock** icon to keep it active in RAM.
+
+#### Xiaomi, Redmi & POCO (MIUI / HyperOS):
+- **Autostart**: Go to **Settings** > **Apps** > **Permissions** > **Autostart** > enable **FocusGuard**.
+- **Battery Saver**: Go to **App Info** > **Battery saver** > select **No restrictions**.
+- **Display Pop-Up Windows**: Under **App permissions**, ensure **Display pop-up windows while running in the background** is enabled.
+
+#### Samsung (One UI):
+- **Battery**: Go to **Settings** > **Apps** > **FocusGuard** > **Battery** > select **Unrestricted**.
+- **Never Sleeping Apps**: Go to **Settings** > **Battery and device care** > **Background usage limits** > add FocusGuard to **Never sleeping apps**.
 
 ---
 

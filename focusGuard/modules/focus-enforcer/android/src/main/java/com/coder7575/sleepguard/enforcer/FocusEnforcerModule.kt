@@ -27,9 +27,17 @@ class FocusEnforcerModule : Module() {
         // Stop active focus lock
         Function("stopFocusLock") {
             val context = appContext.reactContext ?: return@Function false
-            FocusAccessibilityService.activeSessionEndsAt = 0L
+            FocusAccessibilityService.clearActiveSession()
             FocusForegroundService.stop(context)
             AlarmCoordinator.cancelSessionCompletion(context)
+            ScheduleCoordinator.evaluateAndScheduleNext(context)
+            true
+        }
+
+        // Reschedule recurring background routines
+        Function("rescheduleRoutines") {
+            val context = appContext.reactContext ?: return@Function false
+            ScheduleCoordinator.evaluateAndScheduleNext(context)
             true
         }
 

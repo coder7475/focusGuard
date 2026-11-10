@@ -102,7 +102,32 @@ export const RotaryDial: React.FC<RotaryDialProps> = ({
 
   return (
     <GestureDetector gesture={panGesture}>
-      <View style={[styles.container, { width: size, height: size }]}>
+      <View
+        style={[styles.container, { width: size, height: size }]}
+        accessible={true}
+        accessibilityRole="adjustable"
+        accessibilityLabel="Focus duration dial"
+        accessibilityValue={{ min: 15, max: 240, now: value, text: `${value} minutes` }}
+        accessibilityActions={[
+          { name: 'increment', label: 'Increment duration' },
+          { name: 'decrement', label: 'Decrement duration' },
+        ]}
+        onAccessibilityAction={(event) => {
+          const currentIndex = DURATION_STEPS.indexOf(value);
+          if (event.nativeEvent.actionName === 'increment') {
+            const nextIndex = Math.min(
+              DURATION_STEPS.length - 1,
+              (currentIndex >= 0 ? currentIndex : 0) + 1
+            );
+            onChange(DURATION_STEPS[nextIndex]);
+            triggerHaptic();
+          } else if (event.nativeEvent.actionName === 'decrement') {
+            const prevIndex = Math.max(0, (currentIndex >= 0 ? currentIndex : 0) - 1);
+            onChange(DURATION_STEPS[prevIndex]);
+            triggerHaptic();
+          }
+        }}
+      >
         <Svg width={size} height={size}>
           {/* Background Outer Ring */}
           <Circle

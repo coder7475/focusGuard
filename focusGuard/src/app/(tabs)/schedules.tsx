@@ -14,6 +14,7 @@ import { Colors } from '../../constants/colors';
 import { FocusSchedule } from '../../domain/types';
 import { scheduleRepository } from '../../data/repositories/ScheduleRepository';
 import { ScheduleEngine } from '../../domain/ScheduleEngine';
+import FocusEnforcer from '../../../modules/focus-enforcer';
 
 const DAYS = [
   { label: 'M', value: 1 },
@@ -56,8 +57,10 @@ export default function SchedulesScreen() {
             };
             await scheduleRepository.createSchedule(defaultSchedule);
             setSchedules([defaultSchedule]);
+            FocusEnforcer.rescheduleRoutines();
           } else {
             setSchedules(all);
+            FocusEnforcer.rescheduleRoutines();
           }
         }
       } catch {}
@@ -69,6 +72,7 @@ export default function SchedulesScreen() {
 
   const handleToggle = async (id: string, currentState: boolean) => {
     await scheduleRepository.toggleSchedule(id, !currentState);
+    FocusEnforcer.rescheduleRoutines();
     setSchedules((prev) =>
       prev.map((s) => (s.id === id ? { ...s, isEnabled: !currentState } : s))
     );
@@ -76,6 +80,7 @@ export default function SchedulesScreen() {
 
   const handleDelete = async (id: string) => {
     await scheduleRepository.deleteSchedule(id);
+    FocusEnforcer.rescheduleRoutines();
     setSchedules((prev) => prev.filter((s) => s.id !== id));
   };
 
@@ -99,6 +104,7 @@ export default function SchedulesScreen() {
     };
 
     await scheduleRepository.createSchedule(newSched);
+    FocusEnforcer.rescheduleRoutines();
     setSchedules((prev) => [...prev, newSched]);
     setModalVisible(false);
     setName('');

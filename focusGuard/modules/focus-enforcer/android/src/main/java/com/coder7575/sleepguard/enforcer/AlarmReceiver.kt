@@ -6,8 +6,17 @@ import android.content.Intent
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action == AlarmCoordinator.ACTION_SESSION_EXPIRED) {
-            FocusForegroundService.stop(context)
+        val action = intent?.action ?: return
+        when (action) {
+            AlarmCoordinator.ACTION_SESSION_EXPIRED -> {
+                FocusForegroundService.stop(context)
+                FocusAccessibilityService.clearActiveSession()
+                NativeDbHelper(context).markActiveSessionsCompleted()
+                ScheduleCoordinator.evaluateAndScheduleNext(context)
+            }
+            ScheduleCoordinator.ACTION_SCHEDULE_TRIGGER -> {
+                ScheduleCoordinator.evaluateAndScheduleNext(context)
+            }
         }
     }
 }

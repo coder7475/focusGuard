@@ -59,6 +59,17 @@ export default function OnboardingScreen() {
   };
 
   const coreReady = a11yGranted && alarmGranted;
+  const allPermissionsGranted = a11yGranted && overlayGranted && alarmGranted && batteryGranted;
+
+  // Auto-advancement when all permissions are confirmed granted
+  useEffect(() => {
+    if (allPermissionsGranted) {
+      const timer = setTimeout(() => {
+        handleFinish();
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [allPermissionsGranted]);
 
   return (
     <ScrollView
@@ -185,7 +196,11 @@ export default function OnboardingScreen() {
         onPress={handleFinish}
       >
         <Text style={styles.continueText}>
-          {coreReady ? 'ENTER SLEEPGUARD →' : 'CONTINUE (PERMISSIONS PENDING)'}
+          {allPermissionsGranted
+            ? '✓ ALL GRANTED • ADVANCING...'
+            : coreReady
+            ? 'ENTER FOCUSGUARD →'
+            : 'CONTINUE (PERMISSIONS PENDING)'}
         </Text>
       </TouchableOpacity>
 

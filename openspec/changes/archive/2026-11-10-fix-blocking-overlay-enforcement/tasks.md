@@ -22,4 +22,4 @@
 ## 5. Verification & Testing
 
 - [x] 5.1 Run project lint and TypeScript tests (`pnpm test`) to ensure no regressions in TypeScript or domain models.
-- [ ] 5.2 Build Android debug package or verify module compilation with `./gradlew assembleDebug` in `focusGuard/android`.
+- [x ] 5.2 Build Android debug package or verify module compilation with `./gradlew assembleDebug` in `focusGuard/android`.
