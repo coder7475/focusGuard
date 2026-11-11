@@ -91,6 +91,78 @@ class FocusEnforcerModule : Module() {
             context.startActivity(intent)
             true
         }
+
+        // Query installed launchable applications
+        Function("getInstalledApps") {
+            val context = appContext.reactContext ?: return@Function emptyList<Map<String, String>>()
+            val pm = context.packageManager
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val resolveInfos = pm.queryIntentActivities(intent, 0)
+            resolveInfos.mapNotNull { ri ->
+                val pkg = ri.activityInfo?.packageName ?: return@mapNotNull null
+                if (pkg == context.packageName) return@mapNotNull null
+                val label = ri.loadLabel(pm)?.toString() ?: pkg
+                mapOf("packageName" to pkg, "label" to label)
+            }.distinctBy { it["packageName"] }.sortedBy { it["label"]?.lowercase() }
+        }
+
+        // Set Bag Slot allowed app
+        Function("setBagApp") { packageName: String, label: String ->
+            val context = appContext.reactContext ?: return@Function false
+            val prefs = context.getSharedPreferences(PREFS_BAG, Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString(KEY_BAG_PKG, packageName)
+                .putString(KEY_BAG_LABEL, label)
+                .apply()
+
+            FocusAccessibilityService.bagAppPackage = packageName
+            FocusAccessibilityService.bagAppName = label
+            LockOverlayWindowManager.bagAppPackage = packageName
+            LockOverlayWindowManager.bagAppName = label
+            true
+        }
+
+        // Get Bag Slot allowed app
+        Function("getBagApp") {
+            val context = appContext.reactContext ?: return@Function null
+            val prefs = context.getSharedPreferences(PREFS_BAG, Context.MODE_PRIVATE)
+            val pkg = prefs.getString(KEY_BAG_PKG, null)
+            val label = prefs.getString(KEY_BAG_LABEL, null)
+            if (!pkg.isNullOrBlank()) {
+                mapOf("packageName" to pkg, "label" to (label ?: pkg))
+            } else {
+                null
+            }
+        }
+
+        // Clear Bag Slot
+        Function("clearBagApp") {
+            val context = appContext.reactContext ?: return@Function false
+            val prefs = context.getSharedPreferences(PREFS_BAG, Context.MODE_PRIVATE)
+            prefs.edit().clear().apply()
+
+            FocusAccessibilityService.bagAppPackage = null
+            FocusAccessibilityService.bagAppName = null
+            LockOverlayWindowManager.bagAppPackage = null
+            LockOverlayWindowManager.bagAppName = null
+            true
+        }
+
+        // Open application by package name
+        Function("openApp") { packageName: String ->
+            val context = appContext.reactContext ?: return@Function false
+            val intent = context.packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            if (intent != null) {
+                context.startActivity(intent)
+                true
+            } else {
+                false
+            }
+        }
     }
 
     private fun isAccessibilityEnabled(context: Context): Boolean {
@@ -112,5 +184,11 @@ class FocusEnforcerModule : Module() {
     private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         return pm?.isIgnoringBatteryOptimizations(context.packageName) ?: false
+    }
+
+    companion object {
+        const val PREFS_BAG = "focusguard_bag"
+        const val KEY_BAG_PKG = "bag_package"
+        const val KEY_BAG_LABEL = "bag_label"
     }
 }

@@ -64,6 +64,16 @@ describe('AllowlistPolicy', () => {
     expect(policy.evaluateAccess('com.google.android.youtube')).toBe('BLOCKED');
   });
 
+  test('allows bag slot packed app during lockdown', () => {
+    const bagApp = 'com.spotify.music';
+    // Without bag slot, it is blocked
+    expect(policy.evaluateAccess(bagApp)).toBe('BLOCKED');
+    // With bag slot set, it is allowed
+    expect(policy.evaluateAccess(bagApp, null, null, null, bagApp)).toBe('ALLOWED');
+    // Other apps are still blocked even when bag slot is set
+    expect(policy.evaluateAccess('com.instagram.android', null, null, null, bagApp)).toBe('BLOCKED');
+  });
+
   test('allows null, empty, or whitespace packages without crash', () => {
     expect(policy.evaluateAccess(null)).toBe('ALLOWED');
     expect(policy.evaluateAccess('')).toBe('ALLOWED');

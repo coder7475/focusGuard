@@ -10,5 +10,7 @@ data class LockSessionInfo(
     val sessionType: SessionType = SessionType.QUICK,
     val routineName: String? = null,
     val timeRangeFormatted: String? = null,
-    val totalDurationMs: Long = 0L
+    val totalDurationMs: Long = 0L,
+    val bagAppPackage: String? = null,
+    val bagAppName: String? = null
 )

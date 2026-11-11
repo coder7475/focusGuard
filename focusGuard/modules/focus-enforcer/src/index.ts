@@ -2,6 +2,11 @@ import { requireNativeModule } from 'expo';
 
 export type PermissionType = 'ACCESSIBILITY' | 'EXACT_ALARM' | 'BATTERY' | 'OVERLAY' | 'APP_DETAILS';
 
+export interface InstalledAppItem {
+  packageName: string;
+  label: string;
+}
+
 export interface FocusEnforcerNative {
   startFocusLock(endsAtEpochMs: number): boolean;
   stopFocusLock(): boolean;
@@ -9,6 +14,11 @@ export interface FocusEnforcerNative {
   getPermissionStatus(permissionName: PermissionType): boolean;
   openSettingsForPermission(permissionName: PermissionType): boolean;
   openEmergencyDialer(): boolean;
+  getInstalledApps(): InstalledAppItem[];
+  setBagApp(packageName: string, label: string): boolean;
+  getBagApp(): InstalledAppItem | null;
+  clearBagApp(): boolean;
+  openApp(packageName: string): boolean;
 }
 
 let nativeModule: FocusEnforcerNative | null = null;
@@ -24,6 +34,11 @@ try {
     getPermissionStatus: () => true,
     openSettingsForPermission: () => true,
     openEmergencyDialer: () => true,
+    getInstalledApps: () => [],
+    setBagApp: () => true,
+    getBagApp: () => null,
+    clearBagApp: () => true,
+    openApp: () => true,
   };
 }
 

@@ -142,6 +142,47 @@ class LockOverlayWindowManager(private val context: Context) {
         cardLayout.addView(titleView)
         cardLayout.addView(subtitleView)
         cardLayout.addView(countdownView)
+
+        // Bag Slot Packed App Launcher
+        val currentBagPkg = bagAppPackage
+        val currentBagLabel = bagAppName
+        if (!currentBagPkg.isNullOrBlank() && !currentBagLabel.isNullOrBlank()) {
+            val bagButtonDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(14f).toFloat()
+                setColor(Color.parseColor("#00E5FF"))
+            }
+
+            val bagButton = Button(context).apply {
+                text = "OPEN ${currentBagLabel.uppercase()}"
+                textSize = 14f
+                background = bagButtonDrawable
+                setTextColor(Color.parseColor("#121316"))
+                typeface = Typeface.DEFAULT_BOLD
+                val btnH = dp(48f)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    btnH
+                ).apply {
+                    bottomMargin = dp(12f)
+                }
+                setOnClickListener {
+                    try {
+                        val launchIntent = context.packageManager.getLaunchIntentForPackage(currentBagPkg)?.apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        if (launchIntent != null) {
+                            context.startActivity(launchIntent)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to launch bag app", e)
+                    }
+                    hideOverlay()
+                }
+            }
+            cardLayout.addView(bagButton)
+        }
+
         cardLayout.addView(emergencyButton)
         rootLayout.addView(cardLayout)
 
@@ -212,5 +253,11 @@ class LockOverlayWindowManager(private val context: Context) {
 
     companion object {
         private const val TAG = "LockOverlayManager"
+
+        @Volatile
+        var bagAppPackage: String? = null
+
+        @Volatile
+        var bagAppName: String? = null
     }
 }

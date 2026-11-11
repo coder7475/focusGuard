@@ -1,6 +1,7 @@
 package com.coder7575.sleepguard.enforcer
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
@@ -18,6 +19,15 @@ class FocusAccessibilityService : AccessibilityService() {
         overlayManager = LockOverlayWindowManager(this)
         roleResolver = SystemRoleResolver(this)
         dbHelper = NativeDbHelper(this)
+
+        // Load persisted bag slot configuration
+        try {
+            val bagPrefs = getSharedPreferences(FocusEnforcerModule.PREFS_BAG, Context.MODE_PRIVATE)
+            bagAppPackage = bagPrefs.getString(FocusEnforcerModule.KEY_BAG_PKG, null)
+            bagAppName = bagPrefs.getString(FocusEnforcerModule.KEY_BAG_LABEL, null)
+            LockOverlayWindowManager.bagAppPackage = bagAppPackage
+            LockOverlayWindowManager.bagAppName = bagAppName
+        } catch (_: Exception) {}
 
         // Initial check on service start
         val dbTarget = dbHelper.getActiveSessionEndsAt()
@@ -58,6 +68,12 @@ class FocusAccessibilityService : AccessibilityService() {
 
         // 2. Ignore transient system surfaces (e.g. status bar, notification shade, volume dialogs)
         if (roleResolver.isSystemUi(targetPkg)) {
+            return
+        }
+
+        // Check if package is allowed in Bag slot (user packed app during lockdown)
+        if (!bagAppPackage.isNullOrBlank() && targetPkg == bagAppPackage) {
+            overlayManager.hideOverlay()
             return
         }
 
@@ -102,6 +118,12 @@ class FocusAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        @Volatile
+        var bagAppPackage: String? = null
+
+        @Volatile
+        var bagAppName: String? = null
+
         @Volatile
         var activeSessionEndsAt: Long = 0L
 

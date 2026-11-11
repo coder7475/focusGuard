@@ -124,6 +124,17 @@ module.exports = function withFocusEnforcer(config) {
       });
     }
 
+    const hasLauncherIntent = queriesObj.intent.some((i) =>
+      i.action?.some((a) => a.$ && a.$['android:name'] === 'android.intent.action.MAIN') &&
+      i.category?.some((c) => c.$ && c.$['android:name'] === 'android.intent.category.LAUNCHER')
+    );
+    if (!hasLauncherIntent) {
+      queriesObj.intent.push({
+        action: [{ $: { 'android:name': 'android.intent.action.MAIN' } }],
+        category: [{ $: { 'android:name': 'android.intent.category.LAUNCHER' } }],
+      });
+    }
+
     const hasDialIntent = queriesObj.intent.some((i) =>
       i.action?.some((a) => a.$ && a.$['android:name'] === 'android.intent.action.DIAL')
     );

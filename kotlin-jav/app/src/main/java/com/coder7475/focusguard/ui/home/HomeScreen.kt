@@ -55,6 +55,7 @@ import com.coder7475.focusguard.domain.engine.SessionEngine
 import com.coder7475.focusguard.domain.model.SessionStatus
 import com.coder7475.focusguard.platform.alarm.AlarmCoordinator
 import com.coder7475.focusguard.service.foreground.FocusGuardService
+import com.coder7475.focusguard.ui.bag.BagScreen
 import com.coder7475.focusguard.ui.schedule.SchedulesScreen
 import com.coder7475.focusguard.ui.theme.BorderDark
 import com.coder7475.focusguard.ui.theme.DangerRed
@@ -70,7 +71,8 @@ import kotlin.math.max
 
 enum class HomeTab {
     DIAL,
-    ROUTINES
+    ROUTINES,
+    BAG
 }
 
 @Composable
@@ -253,6 +255,28 @@ fun HomeScreen(
                         letterSpacing = 1.sp
                     )
                 }
+
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (currentTab == HomeTab.BAG) SafetyOrange else Color.Transparent)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            currentTab = HomeTab.BAG
+                        }
+                        .padding(vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "THE BAG",
+                        color = if (currentTab == HomeTab.BAG) MatteCharcoal else TextMuted,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        letterSpacing = 1.sp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -365,6 +389,12 @@ fun HomeScreen(
                                     enabled.forEach { alarmCoordinator.scheduleRecurringRoutine(it) }
                                 }
                             }
+                        )
+                    }
+
+                    HomeTab.BAG -> {
+                        BagScreen(
+                            focusPreferences = focusPreferences
                         )
                     }
                 }

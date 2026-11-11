@@ -8,6 +8,8 @@ class AllowlistPolicy(
     private val ownPackageName: String = "com.coder7475.focusguard"
 ) {
 
+    var bagAllowedPackage: String? = null
+
     fun evaluateAccess(packageName: String?): AccessDecision {
         if (packageName.isNullOrBlank()) {
             return AccessDecision.ALLOWED
@@ -15,6 +17,11 @@ class AllowlistPolicy(
 
         // 1. Own package is always allowed
         if (packageName == ownPackageName) {
+            return AccessDecision.ALLOWED
+        }
+
+        // 2. Bag slot allowed app (user packed app during lockdown)
+        if (!bagAllowedPackage.isNullOrBlank() && packageName == bagAllowedPackage) {
             return AccessDecision.ALLOWED
         }
 

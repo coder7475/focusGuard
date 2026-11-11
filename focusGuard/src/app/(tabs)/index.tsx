@@ -17,6 +17,8 @@ import { sessionRepository } from '../../data/repositories/SessionRepository';
 import FocusEnforcer from '../../modules/FocusEnforcer';
 import { FocusSession } from '../../domain/types';
 import { OemBatteryGuideModal } from '../../components/OemBatteryGuideModal';
+import { bagRepository, BagSlot } from '../../data/repositories/BagRepository';
+import { router } from 'expo-router';
 
 export default function FocusDashboard() {
   const insets = useSafeAreaInsets();
@@ -24,6 +26,7 @@ export default function FocusDashboard() {
   const [activeSession, setActiveSession] = useState<FocusSession | null>(null);
   const [remainingMs, setRemainingMs] = useState(0);
   const [stats, setStats] = useState({ completedCount: 0, totalFocusMinutes: 0 });
+  const [bagSlot, setBagSlot] = useState<BagSlot>({ packageName: null, label: null, isPacked: false });
   const [oemModalVisible, setOemModalVisible] = useState(false);
   const timerRef = useRef<any>(null);
 
@@ -39,6 +42,8 @@ export default function FocusDashboard() {
       }
       const s = await sessionRepository.getStats();
       setStats(s);
+      const slot = await bagRepository.getBagSlot();
+      setBagSlot(slot);
     } catch {}
   };
 
@@ -57,6 +62,8 @@ export default function FocusDashboard() {
           }
           const s = await sessionRepository.getStats();
           setStats(s);
+          const slot = await bagRepository.getBagSlot();
+          setBagSlot(slot);
         }
       } catch {}
     })();
@@ -174,6 +181,28 @@ export default function FocusDashboard() {
         </View>
       )}
 
+      {/* Bag Slot Status Banner */}
+      <TouchableOpacity
+        style={styles.bagBanner}
+        onPress={() => router.push('/(tabs)/bag' as any)}
+      >
+        <View style={styles.bagBannerLeft}>
+          <View
+            style={[
+              styles.bagDot,
+              bagSlot.isPacked ? styles.bagDotPacked : styles.bagDotEmpty,
+            ]}
+          />
+          <View>
+            <Text style={styles.bagBannerLabel}>LOCKDOWN BAG • 1 SLOT</Text>
+            <Text style={styles.bagBannerValue}>
+              {bagSlot.isPacked ? `${bagSlot.label} (Allowed)` : 'No app packed (Tap to set)'}
+            </Text>
+          </View>
+        </View>
+        <Text style={styles.bagBannerArrow}>➔</Text>
+      </TouchableOpacity>
+
       {/* Primary Action Button */}
       {!activeSession ? (
         <TouchableOpacity
@@ -185,12 +214,24 @@ export default function FocusDashboard() {
           </Text>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity
-          style={styles.emergencyDialerBtn}
-          onPress={() => FocusEnforcer.openEmergencyDialer()}
-        >
-          <Text style={styles.emergencyDialerText}>📞 EMERGENCY DIALER</Text>
-        </TouchableOpacity>
+        <View style={{ gap: 10, width: '100%' }}>
+          {bagSlot.isPacked && (
+            <TouchableOpacity
+              style={styles.openBagAppBtn}
+              onPress={() => bagSlot.packageName && bagRepository.openApp(bagSlot.packageName)}
+            >
+              <Text style={styles.openBagAppText}>
+                OPEN {bagSlot.label?.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.emergencyDialerBtn}
+            onPress={() => FocusEnforcer.openEmergencyDialer()}
+          >
+            <Text style={styles.emergencyDialerText}>📞 EMERGENCY DIALER</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* Quick Statistics Banner */}
@@ -337,12 +378,71 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    marginVertical: 16,
   },
   emergencyDialerText: {
     color: Colors.dangerRed,
     fontSize: 14,
     fontWeight: '800',
+  },
+  openBagAppBtn: {
+    width: '100%',
+    backgroundColor: Colors.electricCyan,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  openBagAppText: {
+    color: Colors.matteCharcoal,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  bagBanner: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: Colors.cardSurface,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  bagBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  bagDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  bagDotPacked: {
+    backgroundColor: Colors.electricCyan,
+  },
+  bagDotEmpty: {
+    backgroundColor: Colors.borderDark,
+  },
+  bagBannerLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    letterSpacing: 1,
+  },
+  bagBannerValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.offWhite,
+    marginTop: 2,
+  },
+  bagBannerArrow: {
+    color: Colors.electricCyan,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   statsContainer: {
     width: '100%',

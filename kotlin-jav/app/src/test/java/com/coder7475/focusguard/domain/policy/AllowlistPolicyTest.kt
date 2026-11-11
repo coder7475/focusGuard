@@ -86,6 +86,18 @@ class AllowlistPolicyTest {
     }
 
     @Test
+    fun `bag slot allowed app is permitted during lockdown`() {
+        val testBagApp = "com.spotify.music"
+        assertEquals(AccessDecision.BLOCKED, policy.evaluateAccess(testBagApp))
+
+        policy.bagAllowedPackage = testBagApp
+        assertEquals(AccessDecision.ALLOWED, policy.evaluateAccess(testBagApp))
+
+        policy.bagAllowedPackage = null
+        assertEquals(AccessDecision.BLOCKED, policy.evaluateAccess(testBagApp))
+    }
+
+    @Test
     fun `distracting third-party apps are blocked`() {
         val blockedPackages = listOf(
             "com.instagram.android",

@@ -6,6 +6,8 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.coder7475.focusguard.MainActivity
 import com.coder7475.focusguard.data.local.FocusGuardDatabase
+import com.coder7475.focusguard.data.preferences.FocusPreferences
+import com.coder7475.focusguard.data.preferences.focusDataStore
 import com.coder7475.focusguard.data.repository.RoomScheduleRepository
 import com.coder7475.focusguard.data.repository.RoomSessionRepository
 import com.coder7475.focusguard.domain.engine.ScheduleEngine
@@ -25,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -41,10 +44,14 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
     private lateinit var sessionRepository: SessionRepository
     private lateinit var scheduleRepository: ScheduleRepository
+    private lateinit var focusPreferences: FocusPreferences
     private val scheduleEngine = ScheduleEngine()
 
     var currentActiveSession: FocusSession? = null
         internal set
+
+    private var currentBagPackage: String? = null
+    private var currentBagAppName: String? = null
 
     private var lastTargetPackage: String? = null
     var onPackageInspected: ((packageName: String?, decision: AccessDecision) -> Unit)? = null
@@ -56,46 +63,74 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         systemRoleResolver = SystemRoleResolver(this)
         allowlistPolicy = AllowlistPolicy(systemRoleResolver, packageName)
 
-        overlayManager = LockOverlayWindowManager(this) {
-            launchEmergencyDialer()
-        }
+        overlayManager = LockOverlayWindowManager(
+            context = this,
+            onEmergencyClick = { launchEmergencyDialer() },
+            onLaunchBagApp = { launchBagApp() }
+        )
 
         val db = FocusGuardDatabase.getInstance(this)
         sessionRepository = RoomSessionRepository(db.sessionDao())
         scheduleRepository = RoomScheduleRepository(db.scheduleDao())
+        focusPreferences = FocusPreferences(focusDataStore)
+
+        // Observe Bag slot app changes
+        serviceScope.launch {
+            combine(
+                focusPreferences.bagAppPackage,
+                focusPreferences.bagAppName
+            ) { pkg, name -> Pair(pkg, name) }.collectLatest { (pkg, name) ->
+                currentBagPackage = pkg
+                currentBagAppName = name
+                allowlistPolicy.bagAllowedPackage = pkg
+                refreshOverlaySessionInfo()
+            }
+        }
 
         serviceScope.launch {
             sessionRepository.observeActiveSession().collectLatest { session ->
                 currentActiveSession = session
                 if (session != null && session.status == SessionStatus.ACTIVE) {
-                    val (routineName, timeRange) = if (session.type == SessionType.SCHEDULED) {
-                        withContext(Dispatchers.IO) {
-                            val enabled = scheduleRepository.getEnabledSchedules()
-                            val active = enabled.firstOrNull { scheduleEngine.isInsideScheduleWindow(it) }
-                            val name = active?.name ?: "Focus Routine"
-                            val range = active?.let {
-                                "${ScheduleTimeFormatter.formatMinuteOfDay(it.startMinuteOfDay)} – ${ScheduleTimeFormatter.formatMinuteOfDay(it.endMinuteOfDay)}"
-                            }
-                            Pair(name, range)
-                        }
-                    } else {
-                        Pair("Quick Focus", null)
-                    }
-
-                    overlayManager.updateSessionInfo(
-                        LockSessionInfo(
-                            endsAtEpochMs = session.endsAtEpochMs,
-                            sessionType = session.type,
-                            routineName = routineName,
-                            timeRangeFormatted = timeRange,
-                            totalDurationMs = session.durationMs
-                        )
-                    )
+                    refreshOverlaySessionInfo()
                 } else {
                     overlayManager.hideOverlay()
                 }
             }
         }
+    }
+
+    private suspend fun refreshOverlaySessionInfo() {
+        val session = currentActiveSession ?: return
+        if (session.status != SessionStatus.ACTIVE) {
+            overlayManager.hideOverlay()
+            return
+        }
+
+        val (routineName, timeRange) = if (session.type == SessionType.SCHEDULED) {
+            withContext(Dispatchers.IO) {
+                val enabled = scheduleRepository.getEnabledSchedules()
+                val active = enabled.firstOrNull { scheduleEngine.isInsideScheduleWindow(it) }
+                val name = active?.name ?: "Focus Routine"
+                val range = active?.let {
+                    "${ScheduleTimeFormatter.formatMinuteOfDay(it.startMinuteOfDay)} – ${ScheduleTimeFormatter.formatMinuteOfDay(it.endMinuteOfDay)}"
+                }
+                Pair(name, range)
+            }
+        } else {
+            Pair("Quick Focus", null)
+        }
+
+        overlayManager.updateSessionInfo(
+            LockSessionInfo(
+                endsAtEpochMs = session.endsAtEpochMs,
+                sessionType = session.type,
+                routineName = routineName,
+                timeRangeFormatted = timeRange,
+                totalDurationMs = session.durationMs,
+                bagAppPackage = currentBagPackage,
+                bagAppName = currentBagAppName
+            )
+        )
     }
 
     override fun onDestroy() {
@@ -171,6 +206,21 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             overlayManager.hideOverlay()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch emergency dialer", e)
+        }
+    }
+
+    private fun launchBagApp() {
+        val pkg = allowlistPolicy.bagAllowedPackage ?: return
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(pkg)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            if (intent != null) {
+                startActivity(intent)
+                overlayManager.hideOverlay()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch bag app $pkg", e)
         }
     }
 

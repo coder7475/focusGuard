@@ -58,6 +58,7 @@ import kotlin.math.max
 fun LockOverlayScreen(
     sessionInfoProvider: () -> LockSessionInfo,
     onEmergencyClick: () -> Unit,
+    onLaunchBagApp: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -253,6 +254,73 @@ fun LockOverlayScreen(
                         lineHeight = 18.sp,
                         textAlign = TextAlign.Center
                     )
+                }
+            }
+
+            // Bag Packed App Launcher (Allowed during lockdown)
+            if (!sessionInfo.bagAppPackage.isNullOrBlank() && !sessionInfo.bagAppName.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DarkGunmetal),
+                    shape = RoundedCornerShape(10.dp),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(ElectricCyan.copy(alpha = 0.6f))
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(ElectricCyan)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "BAG SLOT: ALLOWED TOOL",
+                                color = ElectricCyan,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = sessionInfo.bagAppName,
+                            color = OffWhite,
+                            fontSize = 15.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onLaunchBagApp()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ElectricCyan,
+                                contentColor = MatteCharcoal
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                        ) {
+                            Text(
+                                text = "OPEN ${sessionInfo.bagAppName.uppercase()}",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
                 }
             }
 

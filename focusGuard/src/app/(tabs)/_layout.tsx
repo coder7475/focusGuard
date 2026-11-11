@@ -91,6 +91,23 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="bag"
+        options={{
+          title: 'The Bag',
+          tabBarIcon: ({ color, focused }) => (
+            <SymbolView
+              tintColor={color}
+              name={{
+                ios: focused ? 'briefcase.fill' : 'briefcase',
+                android: 'work',
+                web: 'work',
+              }}
+              size={Platform.OS === 'ios' ? 22 : 24}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="schedules"
         options={{
           title: 'Schedules',

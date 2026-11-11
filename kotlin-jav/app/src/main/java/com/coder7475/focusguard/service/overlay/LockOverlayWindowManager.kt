@@ -14,7 +14,8 @@ import com.coder7475.focusguard.ui.theme.FocusGuardTheme
 
 open class LockOverlayWindowManager(
     private val context: Context,
-    private val onEmergencyClick: () -> Unit = {}
+    private val onEmergencyClick: () -> Unit = {},
+    private val onLaunchBagApp: () -> Unit = {}
 ) {
 
     private val windowManager: WindowManager =
@@ -71,7 +72,8 @@ open class LockOverlayWindowManager(
                     FocusGuardTheme {
                         LockOverlayScreen(
                             sessionInfoProvider = { sessionInfo },
-                            onEmergencyClick = onEmergencyClick
+                            onEmergencyClick = onEmergencyClick,
+                            onLaunchBagApp = onLaunchBagApp
                         )
                     }
                 }

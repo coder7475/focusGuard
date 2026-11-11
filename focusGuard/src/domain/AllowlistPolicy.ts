@@ -11,7 +11,8 @@ export class AllowlistPolicy {
     packageName: string | null | undefined,
     resolvedDefaultDialer?: string | null,
     resolvedDefaultSms?: string | null,
-    resolvedDefaultLauncher?: string | null
+    resolvedDefaultLauncher?: string | null,
+    bagAllowedPackage?: string | null
   ): AccessDecision {
     if (!packageName || packageName.trim().length === 0) {
       return 'ALLOWED';
@@ -19,6 +20,11 @@ export class AllowlistPolicy {
 
     // 1. Own package is always allowed
     if (packageName === this.ownPackageName) {
+      return 'ALLOWED';
+    }
+
+    // 2. Bag slot allowed app (user packed app during lockdown)
+    if (bagAllowedPackage && packageName === bagAllowedPackage) {
       return 'ALLOWED';
     }
 

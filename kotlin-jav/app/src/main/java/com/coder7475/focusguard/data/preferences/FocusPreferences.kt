@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -22,6 +23,8 @@ class FocusPreferences(
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val KEY_BATTERY_GUIDE_DISMISSED = booleanPreferencesKey("battery_guide_dismissed")
         val KEY_SELECTED_DURATION_MINUTES = intPreferencesKey("selected_duration_minutes")
+        val KEY_BAG_APP_PACKAGE = stringPreferencesKey("bag_app_package")
+        val KEY_BAG_APP_NAME = stringPreferencesKey("bag_app_name")
         const val DEFAULT_DURATION_MINUTES = 25
     }
 
@@ -76,6 +79,44 @@ class FocusPreferences(
     suspend fun setSelectedDurationMinutes(minutes: Int) {
         dataStore.edit { preferences ->
             preferences[KEY_SELECTED_DURATION_MINUTES] = minutes
+        }
+    }
+
+    val bagAppPackage: Flow<String?> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[KEY_BAG_APP_PACKAGE]
+        }
+
+    val bagAppName: Flow<String?> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[KEY_BAG_APP_NAME]
+        }
+
+    suspend fun setBagApp(packageName: String, appName: String) {
+        dataStore.edit { preferences ->
+            preferences[KEY_BAG_APP_PACKAGE] = packageName
+            preferences[KEY_BAG_APP_NAME] = appName
+        }
+    }
+
+    suspend fun clearBagApp() {
+        dataStore.edit { preferences ->
+            preferences.remove(KEY_BAG_APP_PACKAGE)
+            preferences.remove(KEY_BAG_APP_NAME)
         }
     }
 
